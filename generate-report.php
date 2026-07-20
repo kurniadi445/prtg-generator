@@ -3,30 +3,12 @@
 require 'vendor/autoload.php';
 
 require_once 'database.php';
+require_once 'helpers.php';
 
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Shared\Converter;
 use Spatie\Browsershot\Browsershot;
-
-/**
- * Bersihkan nama pelanggan agar aman dipakai sebagai nama folder.
- */
-function sanitizeFolderName(string $name, int $maxLength = 100): string
-{
-    $name = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
-    $name = preg_replace('/[<>:"\/\\\\|?*\x00-\x1F]/', '-', $name);
-    $name = preg_replace('/[^A-Za-z0-9._ -]/', '-', $name);
-    $name = preg_replace('/\s+/', ' ', $name);
-    $name = preg_replace('/-+/', '-', $name);
-    $name = trim($name, " .-");
-
-    if ($name === '') {
-        $name = 'UNKNOWN';
-    }
-
-    return mb_substr($name, 0, $maxLength);
-}
 
 /**
  * Style font yang dipakai berulang di laporan.
