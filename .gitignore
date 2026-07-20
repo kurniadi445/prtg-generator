@@ -1,0 +1,11 @@
+/node_modules
+/vendor
+
+/storage
+/tmp
+/jobs
+
+/.claude
+
+config.php
+cookie.txt
