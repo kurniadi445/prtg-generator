@@ -236,7 +236,7 @@ $err = $_GET['err'] ?? '';
     <form class="tambah" method="post">
         <input type="hidden" name="aksi" value="tambah">
         <div class="grp id">
-            <label class="field" for="id-baru">ID Pelanggan</label>
+            <label class="field" for="id-baru">ID Sensor PRTG</label>
             <input id="id-baru" name="id" type="text" placeholder="mis. 10070" required>
         </div>
         <div class="grp">
@@ -253,8 +253,8 @@ $err = $_GET['err'] ?? '';
     <table>
         <thead>
         <tr>
-            <th style="width:120px">ID</th>
-            <th>Nama</th>
+            <th style="width:120px">ID Sensor</th>
+            <th>Nama Pelanggan</th>
             <th style="width:170px"></th>
         </tr>
         </thead>
