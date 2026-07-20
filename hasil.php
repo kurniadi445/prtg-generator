@@ -84,6 +84,8 @@ if (is_dir($root)) {
         summary .jm { color: var(--redup); font-size: 13px; white-space: nowrap; }
         summary .panah { color: var(--redup); transition: transform .2s; }
         details[open] summary .panah { transform: rotate(90deg); }
+        summary a.zip { background: #eef1f5; border: 1px solid var(--garis); border-radius: 6px; color: var(--teks); flex: none; font-size: 12px; font-weight: bold; padding: 5px 10px; text-decoration: none; white-space: nowrap; }
+        summary a.zip:hover { background: var(--biru); border-color: var(--biru); color: #fff; }
 
         .file { align-items: center; border-top: 1px solid #f2f4f7; display: flex; gap: 12px; padding: 10px 18px 10px 46px; }
         .file .kar { font-size: 18px; }
@@ -121,6 +123,8 @@ if (is_dir($root)) {
                         <span class="kar">📁</span>
                         <span class="nm"><?= htmlspecialchars($fo['nama']) ?></span>
                         <span class="jm"><?= $fo['jumlah'] ?> file · <?= htmlspecialchars($fo['ukuran']) ?></span>
+                        <a class="zip" href="unduh-folder.php?folder=<?= rawurlencode($fo['nama']) ?>"
+                           onclick="event.stopPropagation()" title="Unduh semua sebagai ZIP">⬇ ZIP</a>
                         <span class="panah">▸</span>
                     </summary>
                     <?php foreach ($fo['files'] as $f): ?>
