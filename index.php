@@ -201,6 +201,8 @@ $pelanggan = $bd->query("
 <div style="align-items:baseline;display:flex;justify-content:space-between;margin:0 auto 18px;max-width:640px;">
     <h2 style="margin:0;">Data Historis PRTG Generator</h2>
     <span>
+        <a href="antrean.php" style="color:#007bff;font-size:14px;text-decoration:none;">Antrean</a>
+        &nbsp;·&nbsp;
         <a href="hasil.php" style="color:#007bff;font-size:14px;text-decoration:none;">Hasil Laporan</a>
         &nbsp;·&nbsp;
         <a href="pelanggan.php" style="color:#007bff;font-size:14px;text-decoration:none;">Kelola Pelanggan</a>
