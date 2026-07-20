@@ -232,10 +232,7 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
 
     file_put_contents($htmlFile, $data);
 
-    // newHeadless() memakai Chrome penuh (bukan chrome-headless-shell) yang
-    // sudah terpasang di cache Puppeteer.
     Browsershot::url($laporan['app_base_url'] . '/' . $htmlFile)
-        ->newHeadless()
         ->windowSize(1920, 1080)
         ->save($pngFile);
 
