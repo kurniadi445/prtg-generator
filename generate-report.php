@@ -7,8 +7,11 @@ require_once 'helpers.php';
 
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\Settings;
 use PhpOffice\PhpWord\Shared\Converter;
 use Spatie\Browsershot\Browsershot;
+
+Settings::setOutputEscapingEnabled(true);
 
 /**
  * Style font yang dipakai berulang di laporan.
@@ -292,14 +295,16 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
         foreach ($node as $n) {
             $datetime = trim($xpath->evaluate("string(td[2]/nobr)", $n));
 
-            preg_match(
-                '/^(\d{2}\/\d{2}\/\d{4}\s+\d{2}\.\d{2}\.\d{2})\s+−\s+(\d{2}\/\d{2}\/\d{4}\s+\d{2}\.\d{2}\.\d{2})/',
-                $datetime,
-                $cocok
-            );
+            if (!preg_match('/^(\d{2}\/\d{2}\/\d{4}\s+\d{2}\.\d{2}\.\d{2})\s*[−–—-]\s*(\d{2}\/\d{2}\/\d{4}\s+\d{2}\.\d{2}\.\d{2})/u', $datetime, $cocok)) {
+                continue;
+            }
 
             $tanggalMulai = DateTime::createFromFormat('d/m/Y H.i.s', $cocok[1]);
             $tanggalSelesai = DateTime::createFromFormat('d/m/Y H.i.s', $cocok[2]);
+
+            if (!$tanggalMulai || !$tanggalSelesai) {
+                continue;
+            }
 
             $interval = $tanggalMulai->diff($tanggalSelesai);
 
@@ -369,11 +374,8 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
 
     $intlDateFormatter->setPattern('yyyy-MM');
 
-    $namaFile = strtoupper(
-        $intlDateFormatter->format(
-            strtotime($bulan)
-        )
-    ) . ' - ' . $namaPelanggan . '.docx';
+    $namaFile = strtoupper($intlDateFormatter->format(strtotime($bulan)))
+        . ' - ' . sanitizeFolderName($namaPelanggan) . '.docx';
 
     $folder = 'jobs/' . sanitizeFolderName($namaPelanggan);
 
