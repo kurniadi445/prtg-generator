@@ -33,7 +33,26 @@ return [
         // URL basis aplikasi ini di web server, dipakai Browsershot untuk render HTML
         'app_base_url' => 'http://localhost/prtg-generator',
         'watermark'    => 'img/watermark.png',
-        'prepared_by'  => ['name' => 'Nama Penyusun', 'title' => 'Jabatan Penyusun'],
-        'approved_by'  => ['name' => 'Nama Penyetuju', 'title' => 'Jabatan Penyetuju'],
+
+        // Blok tanda tangan di bagian bawah lembar ke-2
+        'signature' => [
+            'left' => [
+                'heading' => 'Nama Perusahaan',
+                'name'    => 'Nama Penanda Tangan',
+                'title'   => 'Jabatan Penanda Tangan',
+            ],
+            'right' => [
+                'heading' => 'Pelanggan',
+                'name'    => '.............................',
+                'title'   => '.............................',
+            ],
+        ],
+
+        // Daftar kotak centang "Approval :" di footer lembar ke-2.
+        // Boleh diisi berapa pun barisnya; satu entri = satu baris.
+        'approval' => [
+            ['name' => 'Nama Penyetuju 1', 'title' => 'Jabatan Penyetuju 1'],
+            ['name' => 'Nama Penyetuju 2', 'title' => 'Jabatan Penyetuju 2'],
+        ],
     ],
 ];

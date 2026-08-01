@@ -22,6 +22,26 @@ function fontStyle(int $size, bool $bold = false, string $name = 'Times New Roma
 }
 
 /**
+ * Ubah total detik menjadi teks durasi, mis. "1 jam 16 menit 5 detik".
+ */
+function formatDurasi(int $detik): string
+{
+    $bagian = [];
+
+    $hari  = intdiv($detik, 86400);
+    $jam   = intdiv($detik % 86400, 3600);
+    $menit = intdiv($detik % 3600, 60);
+    $sisa  = $detik % 60;
+
+    if ($hari)  { $bagian[] = $hari . ' hari'; }
+    if ($jam)   { $bagian[] = $jam . ' jam'; }
+    if ($menit) { $bagian[] = $menit . ' menit'; }
+    if ($sisa)  { $bagian[] = $sisa . ' detik'; }
+
+    return $bagian ? implode(' ', $bagian) : '0 detik';
+}
+
+/**
  * Buat laporan untuk rentang bulan (inklusif) lalu kembalikan daftar file.
  */
 function generateReportRange($dari, $sampai, $idPelanggan, $jobId, $includeDowntime)
@@ -289,9 +309,10 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
 
     $node = $xpath->query("//table[@id='table_statereporttable']/tbody/tr[td[1][contains(normalize-space(.), 'Down')]]");
 
-    if ($includeDowntime && $node->length > 0) {
-        $nomor = 1;
+    // Kelompokkan downtime per jam. Kunci = awal jam, nilai = total detik down.
+    $ember = [];
 
+    if ($includeDowntime) {
         foreach ($node as $n) {
             $datetime = trim($xpath->evaluate("string(td[2]/nobr)", $n));
 
@@ -299,40 +320,46 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
                 continue;
             }
 
-            $tanggalMulai = DateTime::createFromFormat('d/m/Y H.i.s', $cocok[1]);
-            $tanggalSelesai = DateTime::createFromFormat('d/m/Y H.i.s', $cocok[2]);
+            $awalDown  = DateTime::createFromFormat('d/m/Y H.i.s', $cocok[1]);
+            $akhirDown = DateTime::createFromFormat('d/m/Y H.i.s', $cocok[2]);
 
-            if (!$tanggalMulai || !$tanggalSelesai) {
+            if (!$awalDown || !$akhirDown || $akhirDown <= $awalDown) {
                 continue;
             }
 
-            $interval = $tanggalMulai->diff($tanggalSelesai);
+            // Pecah rentang di setiap batas jam agar durasi tiap ember akurat.
+            $kursor = clone $awalDown;
 
-            $durasi = [];
+            while ($kursor < $akhirDown) {
+                $batasJam = (clone $kursor)
+                    ->setTime((int) $kursor->format('G'), 0, 0)
+                    ->modify('+1 hour');
 
-            if ($interval->d > 0) {
-                $durasi[] = $interval->d . ' hari';
+                $potong = min($batasJam, $akhirDown);
+                $kunci  = $kursor->format('Y-m-d H:00:00');
+
+                $ember[$kunci] = ($ember[$kunci] ?? 0)
+                    + ($potong->getTimestamp() - $kursor->getTimestamp());
+
+                $kursor = clone $potong;
             }
+        }
 
-            if ($interval->h > 0) {
-                $durasi[] = $interval->h . ' jam';
-            }
+        ksort($ember);
+    }
 
-            if ($interval->i > 0) {
-                $durasi[] = $interval->i . ' menit';
-            }
+    if ($ember) {
+        $nomor = 1;
 
-            if ($interval->s > 0) {
-                $durasi[] = $interval->s . ' detik';
-            }
-
-            $teksInterval = implode(' ', $durasi);
+        foreach ($ember as $awalJam => $totalDetik) {
+            $emberMulai   = new DateTime($awalJam);
+            $emberSelesai = (clone $emberMulai)->modify('+1 hour');
 
             $tabel->addRow();
             $tabel->addCell()->addText($nomor, [], ['align' => 'center']);
-            $tabel->addCell()->addText($tanggalMulai->format('d/m/Y H:i:s'), [], ['align' => 'center']);
-            $tabel->addCell()->addText($tanggalSelesai->format('d/m/Y H:i:s'), [], ['align' => 'center']);
-            $tabel->addCell()->addText($teksInterval, [], ['align' => 'center']);
+            $tabel->addCell()->addText($emberMulai->format('d/m/Y H:i:s'), [], ['align' => 'center']);
+            $tabel->addCell()->addText($emberSelesai->format('d/m/Y H:i:s'), [], ['align' => 'center']);
+            $tabel->addCell()->addText(formatDurasi($totalDetik), [], ['align' => 'center']);
             $tabel->addCell();
 
             $nomor++;
@@ -350,27 +377,62 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
     $section->addTextBreak();
 
     $phpWord->addTableStyle('Persetujuan', [
-        'align' => 'right',
-        'borderSize' => 1
+        'align'      => 'right',
+        'borderSize' => 1,
     ]);
+
+    $ttd  = $laporan['signature'];
+    $fCal = fontStyle(11, false, 'Calibri');
+    $fPol = ['name' => 'Calibri', 'size' => 11];
+    $fGrs = ['name' => 'Calibri', 'size' => 11, 'underline' => 'single'];
+    $pTtd = ['align' => 'center', 'spaceAfter' => 0];
 
     $tabel = $section->addTable('Persetujuan');
 
     $tabel->addRow();
-    $tabel->addCell(2268)->addText('Prepared By', fontStyle(11, false, 'Calibri'), ['align' => 'center', 'spaceAfter' => 0]);
-    $tabel->addCell(2268)->addText('Approved By', fontStyle(11, false, 'Calibri'), ['align' => 'center', 'spaceAfter' => 0]);
+    $tabel->addCell(2268)->addText($ttd['left']['heading'], $fCal, $pTtd);
+    $tabel->addCell(2268)->addText($ttd['right']['heading'], $fCal, $pTtd);
 
     $tabel->addRow(1134);
     $tabel->addCell(2268);
     $tabel->addCell(2268);
 
     $sel = $tabel->addRow()->addCell(2268);
-    $sel->addText($laporan['prepared_by']['name'], fontStyle(11, false, 'Calibri'), ['align' => 'center', 'spaceAfter' => 0]);
-    $sel->addText($laporan['prepared_by']['title'], fontStyle(11, false, 'Calibri'), ['align' => 'center', 'spaceAfter' => 0]);
+    $sel->addText($ttd['left']['name'],  $fGrs, $pTtd);
+    $sel->addText($ttd['left']['title'], $fCal, $pTtd);
 
     $sel = $tabel->addCell(2268);
-    $sel->addText($laporan['approved_by']['name'], fontStyle(11, false, 'Calibri'), ['align' => 'center', 'spaceAfter' => 0]);
-    $sel->addText($laporan['approved_by']['title'], fontStyle(11, false, 'Calibri'), ['align' => 'center', 'spaceAfter' => 0]);
+    $sel->addText($ttd['right']['name'],  $fPol, $pTtd);
+    $sel->addText($ttd['right']['title'], $fPol, $pTtd);
+
+    $phpWord->addTableStyle('Approval', [
+        'align'           => 'left',
+        'cellMarginLeft'  => 54,
+        'cellMarginRight' => 54,
+    ]);
+
+    $footer = $section->addFooter();
+
+    $footer->addText('Approval :', fontStyle(8, true, 'Calibri'), ['spaceAfter' => 0]);
+
+    $tblApproval = $footer->addTable('Approval');
+
+    $gayaKotak = [
+        'valign'      => 'center',
+        'borderSize'  => 6,
+        'borderColor' => '000000',
+    ];
+
+    foreach ($laporan['approval'] as $orang) {
+        $baris = $tblApproval->addRow(400);
+
+        $baris->addCell(400, $gayaKotak);   // kotak centang kosong
+
+        $sel = $baris->addCell(8000, ['valign' => 'center']);
+
+        $sel->addText($orang['name'],  fontStyle(8, true, 'Calibri'), ['spaceAfter' => 0]);
+        $sel->addText($orang['title'], ['name' => 'Calibri', 'size' => 8], ['spaceAfter' => 0]);
+    }
 
     $intlDateFormatter->setPattern('yyyy-MM');
 
