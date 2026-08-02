@@ -84,7 +84,7 @@ return function (array $konteks): PhpWord {
 
     $isi->addText(
         'Traffic Bulan ' . $konteks['namaBulan'] . ' ' . $nama
-            . '          (1 – ' . $konteks['jumlahHari']
+            . ' (1-' . $konteks['jumlahHari']
             . ' ' . $konteks['namaBulan'] . ' ' . $konteks['tahun'] . ')',
         fontStyle(13, true)
     );
