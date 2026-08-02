@@ -7,10 +7,14 @@
  *   worker-control.php?aksi=start    -> nyalakan worker sebagai proses latar
  *   worker-control.php?aksi=stop     -> minta worker berhenti setelah job ini
  *
- * KEAMANAN: 'start' menjalankan proses di server, jadi endpoint ini hanya
- * melayani permintaan dari mesin yang sama. Aplikasi ini tidak punya login;
- * kalau suatu saat dibuka ke jaringan kantor, endpoint ini harus diberi
- * autentikasi lebih dulu atau dimatikan.
+ * KEAMANAN: 'start' menjalankan proses di server. Daftar IP yang boleh
+ * menyalakan/mematikan worker diatur di config('worker')['kendali_ip'].
+ * Bawaannya hanya localhost. Isi '*' untuk membuka ke semua alamat.
+ *
+ * Perlu diingat: aplikasi ini tidak punya login sama sekali, jadi siapa pun
+ * yang bisa membuka halamannya juga bisa menghapus job dan berkas laporan.
+ * Kalau sekarang berada di server bersama, pengamanan yang sebenarnya
+ * berguna adalah memasang autentikasi di depan seluruh aplikasi.
  */
 
 require_once 'database.php';
@@ -22,8 +26,37 @@ const DETAK_BERKAS      = 'tmp/worker.json';
 const HENTI_BERKAS      = 'tmp/worker.stop';
 const DETAK_KEDALUWARSA = 15;
 
-$lokal = ['127.0.0.1', '::1'];
-$asal  = $_SERVER['REMOTE_ADDR'] ?? '';
+/**
+ * Alamat pemanggil, dinormalkan. PHP melaporkan klien IPv4 di soket IPv6
+ * sebagai '::ffff:192.168.1.10'; awalan itu dibuang agar cocok dengan
+ * daftar di config.
+ */
+function alamatAsal(): string
+{
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+
+    if (stripos($ip, '::ffff:') === 0) {
+        $ip = substr($ip, 7);
+    }
+
+    return $ip;
+}
+
+/**
+ * Boleh menyalakan/mematikan worker dari alamat ini?
+ */
+function bolehKendali(string $asal): bool
+{
+    $daftar = config('worker')['kendali_ip'] ?? ['127.0.0.1', '::1'];
+
+    if (in_array('*', $daftar, true)) {
+        return true;
+    }
+
+    return in_array($asal, $daftar, true);
+}
+
+$asal = alamatAsal();
 
 $jawab = function (array $data, int $kode = 200): void {
     http_response_code($kode);
@@ -34,7 +67,7 @@ $jawab = function (array $data, int $kode = 200): void {
 /**
  * Status worker berdasarkan heartbeat + isi antrean.
  */
-$statusWorker = function () use ($lokal, $asal): array {
+$statusWorker = function () use ($asal): array {
     $detak = is_file(DETAK_BERKAS)
         ? json_decode((string) file_get_contents(DETAK_BERKAS), true)
         : null;
@@ -74,7 +107,8 @@ $statusWorker = function () use ($lokal, $asal): array {
         'berhenti_diminta' => is_file(HENTI_BERKAS),
         'antre'       => $antre,
         'diproses'    => $proses,
-        'boleh_kendali' => in_array($asal, $lokal, true),
+        'boleh_kendali' => bolehKendali($asal),
+        'ip_anda'       => $asal,
     ];
 };
 
@@ -86,10 +120,11 @@ if ($aksi === 'status') {
 }
 
 // --- start / stop: hanya dari mesin yang sama ---------------------------
-if (!in_array($asal, $lokal, true)) {
+if (!bolehKendali($asal)) {
     $jawab([
         'ok'    => false,
-        'pesan' => 'Menyalakan atau mematikan worker hanya bisa dari komputer server.',
+        'pesan' => "Alamat $asal tidak diizinkan mengendalikan worker. "
+            . "Tambahkan ke config('worker')['kendali_ip'].",
     ], 403);
 }
 

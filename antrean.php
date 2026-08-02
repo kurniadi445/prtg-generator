@@ -431,8 +431,16 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
         btnOn.disabled  = st.berjalan || !bisa;
         btnOff.disabled = !st.berjalan || !bisa || st.berhenti_diminta;
 
+        // Kalau kendali terkunci, sebutkan alasannya lengkap dengan IP yang
+        // terdeteksi — supaya jelas apa yang perlu didaftarkan di config.
         if (!bisa) {
-            btnOn.title = btnOff.title = 'Hanya bisa dari komputer server';
+            const alasan = 'Alamat ' + (st.ip_anda || '?') + ' belum diizinkan. '
+                + "Tambahkan ke config('worker')['kendali_ip'].";
+
+            btnOn.title = btnOff.title = alasan;
+            rinci.textContent = alasan;
+        } else {
+            btnOn.title = btnOff.title = '';
         }
 
         // Muat ulang halaman saat job selesai, agar tabelnya ikut segar.

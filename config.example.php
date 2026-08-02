@@ -34,6 +34,20 @@ return [
         // Berkas PHP yang dipakai saat worker dinyalakan dari browser
         // (tombol di halaman Antrean). Sesuaikan dengan lokasi XAMPP Anda.
         'php_binary' => 'C:\\xampp\\php\\php.exe',
+
+        // Alamat IP yang boleh menyalakan / mematikan worker dari browser.
+        // Bawaannya hanya komputer server itu sendiri.
+        //
+        // Kalau aplikasi diakses lewat alamat jaringan (mis.
+        // http://192.168.1.10/prtg-generator), localhost saja tidak cukup —
+        // tambahkan alamat komputer yang Anda pakai, atau isi ['*'] untuk
+        // membuka ke semua. Alamat Anda saat ini bisa dilihat di
+        // worker-control.php?aksi=status pada kolom "ip_anda".
+        //
+        // Perlu diingat aplikasi ini belum punya login, jadi membuka ke '*'
+        // berarti siapa pun yang bisa mengakses halaman ini bisa menyalakan
+        // dan mematikan worker.
+        'kendali_ip' => ['127.0.0.1', '::1'],
     ],
 
     // Pengaturan umum pembuatan laporan Word
