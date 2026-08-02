@@ -1,5 +1,6 @@
 <?php
 require 'database.php';
+require_once 'helpers.php';
 
 $bd = db();
 
@@ -8,11 +9,26 @@ $bd = db();
  * refresh halaman tidak mengirim ulang data.
  */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $aksi = $_POST['aksi'] ?? '';
-    $id   = trim($_POST['id'] ?? '');
-    $nama = trim($_POST['nama'] ?? '');
+    $aksi     = $_POST['aksi'] ?? '';
+    $id       = trim($_POST['id'] ?? '');
+    $nama     = trim($_POST['nama'] ?? '');
+    $template = trim($_POST['template'] ?? '');
 
     $pesan = fn(string $k, string $v) => header('Location: pelanggan.php?' . $k . '=' . urlencode($v));
+
+    // Daftar template diambil dari config('templates') supaya tidak ada
+    // daftar kedua yang harus ikut diperbarui saat menambah template.
+    $daftarTpl   = daftarTemplate();
+    $templateAwal = config('report')['default_template'] ?? 'idt';
+
+    if ($template === '') {
+        $template = $templateAwal;
+    }
+
+    if ($aksi !== 'hapus' && !isset($daftarTpl[$template])) {
+        $pesan('err', 'Template "' . $template . '" tidak dikenal.');
+        exit;
+    }
 
     try {
         if ($aksi === 'tambah') {
@@ -27,8 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($cek->fetchColumn()) {
                     $pesan('err', 'ID "' . $id . '" sudah terdaftar.');
                 } else {
-                    $bd->prepare('INSERT INTO pelanggan (id, nama) VALUES (?, ?)')
-                        ->execute([$id, mb_substr($nama, 0, 255)]);
+                    $bd->prepare('INSERT INTO pelanggan (id, nama, template) VALUES (?, ?, ?)')
+                        ->execute([$id, mb_substr($nama, 0, 255), $template]);
                     $pesan('ok', 'Pelanggan "' . $nama . '" ditambahkan.');
                 }
             }
@@ -36,9 +52,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id === '' || $nama === '') {
                 $pesan('err', 'Nama tidak boleh kosong.');
             } else {
-                $bd->prepare('UPDATE pelanggan SET nama = ? WHERE id = ?')
-                    ->execute([mb_substr($nama, 0, 255), $id]);
-                $pesan('ok', 'Nama pelanggan diperbarui.');
+                $bd->prepare('UPDATE pelanggan SET nama = ?, template = ? WHERE id = ?')
+                    ->execute([mb_substr($nama, 0, 255), $template, $id]);
+                $pesan('ok', 'Data pelanggan diperbarui.');
             }
         } elseif ($aksi === 'hapus') {
             $bd->prepare('DELETE FROM pelanggan WHERE id = ?')->execute([$id]);
@@ -53,8 +69,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-$pelanggan = $bd->query('SELECT id, nama FROM pelanggan ORDER BY nama')
+$pelanggan = $bd->query('SELECT id, nama, template FROM pelanggan ORDER BY nama')
     ->fetchAll(PDO::FETCH_ASSOC);
+
+$daftarTpl    = daftarTemplate();
+$templateAwal = config('report')['default_template'] ?? 'idt';
 
 $ok  = $_GET['ok']  ?? '';
 $err = $_GET['err'] ?? '';
@@ -91,7 +110,7 @@ $err = $_GET['err'] ?? '';
             display: flex;
             justify-content: space-between;
             margin: 0 auto 18px;
-            max-width: 760px;
+            max-width: 1040px;
         }
 
         .bar h2 { margin: 0; }
@@ -106,11 +125,12 @@ $err = $_GET['err'] ?? '';
 
         .kartu {
             background: #fff;
+            overflow-x: auto;
             border: 1px solid var(--garis);
             border-radius: 10px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
             margin: 0 auto 18px;
-            max-width: 760px;
+            max-width: 1040px;
             padding: 18px 20px;
         }
 
@@ -118,7 +138,7 @@ $err = $_GET['err'] ?? '';
             border-radius: 8px;
             font-size: 14px;
             margin: 0 auto 16px;
-            max-width: 760px;
+            max-width: 1040px;
             padding: 12px 16px;
         }
 
@@ -143,13 +163,20 @@ $err = $_GET['err'] ?? '';
             margin-bottom: 4px;
         }
 
-        input[type=text] {
+        input[type=text], select {
+            background: #fff;
             border: 1px solid var(--garis);
             border-radius: 6px;
             font-size: 14px;
             padding: 9px 10px;
             width: 100%;
         }
+
+        .tambah .grp.tpl { flex: 0 0 210px; }
+
+        td.tpl { color: #5b616b; font-size: 13px; white-space: nowrap; }
+
+        .edit-form select { flex: 0 0 auto; width: auto; }
 
         .btn {
             background: var(--biru);
@@ -211,8 +238,8 @@ $err = $_GET['err'] ?? '';
         .btn-kecil.hapus:hover { background: #fdeaec; }
 
         .edit-form { display: none; gap: 6px; }
-        .edit-form.aktif { display: flex; }
-        .edit-form input { min-width: 220px; }
+        .edit-form.aktif { align-items: center; display: flex; flex-wrap: wrap; }
+        .edit-form input { flex: 1 1 220px; min-width: 160px; }
 
         tr.tersembunyi { display: none; }
 
@@ -243,18 +270,30 @@ $err = $_GET['err'] ?? '';
             <label class="field" for="nama-baru">Nama Pelanggan</label>
             <input id="nama-baru" name="nama" type="text" placeholder="Nama lengkap pelanggan" required>
         </div>
+        <div class="grp tpl">
+            <label class="field" for="template-baru">Template</label>
+            <select id="template-baru" name="template">
+                <?php foreach ($daftarTpl as $kunci => $label): ?>
+                    <option value="<?= htmlspecialchars($kunci, ENT_QUOTES) ?>"
+                        <?= $kunci === $templateAwal ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($label) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
         <button class="btn" type="submit">+ Tambah</button>
     </form>
 </div>
 
 <div class="kartu">
-    <input id="cari" type="text" placeholder="🔍 Cari nama atau ID..." autocomplete="off">
+    <input id="cari" type="text" placeholder="🔍 Cari nama, ID, atau template..." autocomplete="off">
 
     <table>
         <thead>
         <tr>
             <th style="width:120px">ID Sensor</th>
             <th>Nama Pelanggan</th>
+            <th style="width:190px">Template</th>
             <th style="width:170px"></th>
         </tr>
         </thead>
@@ -262,8 +301,13 @@ $err = $_GET['err'] ?? '';
         <?php foreach ($pelanggan as $p):
             $idAman   = htmlspecialchars($p['id'], ENT_QUOTES);
             $namaAman = htmlspecialchars($p['nama'], ENT_QUOTES);
+
+            // Template yang tidak lagi terdaftar tetap ditampilkan apa adanya
+            // agar barisnya tidak terlihat kosong tanpa sebab.
+            $tplKunci = $p['template'] ?: $templateAwal;
+            $tplLabel = $daftarTpl[$tplKunci] ?? ($tplKunci . ' (tidak terdaftar)');
             ?>
-            <tr data-cari="<?= htmlspecialchars(strtolower($p['id'] . ' ' . $p['nama']), ENT_QUOTES) ?>">
+            <tr data-cari="<?= htmlspecialchars(strtolower($p['id'] . ' ' . $p['nama'] . ' ' . $tplLabel), ENT_QUOTES) ?>">
                 <td class="id"><?= $idAman ?></td>
                 <td>
                     <span class="nama-text"><?= $namaAman ?></span>
@@ -271,10 +315,19 @@ $err = $_GET['err'] ?? '';
                         <input type="hidden" name="aksi" value="ubah">
                         <input type="hidden" name="id" value="<?= $idAman ?>">
                         <input type="text" name="nama" value="<?= $namaAman ?>" required>
+                        <select name="template">
+                            <?php foreach ($daftarTpl as $kunci => $label): ?>
+                                <option value="<?= htmlspecialchars($kunci, ENT_QUOTES) ?>"
+                                    <?= $kunci === $tplKunci ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($label) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                         <button class="btn-kecil ubah" type="submit">Simpan</button>
                         <button class="btn-kecil batal" type="button">Batal</button>
                     </form>
                 </td>
+                <td class="tpl"><?= htmlspecialchars($tplLabel) ?></td>
                 <td class="aksi">
                     <button class="btn-kecil ubah tombol-ubah" type="button">Ubah</button>
                     <form method="post" style="display:inline"

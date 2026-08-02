@@ -1,13 +1,25 @@
 <?php
 require 'database.php';
+require_once 'helpers.php';
 
 $bd = db();
 
 $pelanggan = $bd->query("
-    SELECT id, nama
+    SELECT id, nama, template
     FROM pelanggan
     ORDER BY nama
 ")->fetchAll(PDO::FETCH_ASSOC);
+
+$daftarTpl    = daftarTemplate();
+$templateAwal = config('report')['default_template'] ?? 'idt';
+
+// Hitung jumlah pelanggan per template, untuk ditampilkan di penyaring.
+$jumlahTpl = [];
+
+foreach ($pelanggan as $p) {
+    $kunci = $p['template'] ?: $templateAwal;
+    $jumlahTpl[$kunci] = ($jumlahTpl[$kunci] ?? 0) + 1;
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -172,6 +184,39 @@ $pelanggan = $bd->query("
             font-size: 14px;
         }
 
+        /* Label template di ujung kanan tiap baris */
+        .item .tpl {
+            background: #eef1f5;
+            border: 1px solid var(--garis);
+            border-radius: 999px;
+            color: #5b616b;
+            font-size: 11px;
+            margin-left: auto;
+            padding: 2px 9px;
+            white-space: nowrap;
+        }
+
+        .saring {
+            align-items: center;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .saring label {
+            color: #8a909a;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .saring select {
+            background: #fff;
+            border: 1px solid var(--garis);
+            border-radius: 6px;
+            font-size: 14px;
+            padding: 8px 10px;
+        }
+
         .kosong {
             color: #8a909a;
             display: none;
@@ -233,7 +278,19 @@ $pelanggan = $bd->query("
             <span class="badge"><span id="jml-terpilih">0</span> / <?= count($pelanggan) ?> dipilih</span>
         </div>
 
-        <input id="cari" type="text" placeholder="🔍 Cari nama atau ID pelanggan..." autocomplete="off">
+        <input id="cari" type="text" placeholder="🔍 Cari nama, ID, atau template..." autocomplete="off">
+
+        <div class="saring">
+            <label for="saring-tpl">Template:</label>
+            <select id="saring-tpl">
+                <option value="">Semua (<?= count($pelanggan) ?>)</option>
+                <?php foreach ($daftarTpl as $kunci => $label): ?>
+                    <option value="<?= htmlspecialchars($kunci, ENT_QUOTES) ?>">
+                        <?= htmlspecialchars($label) ?> (<?= $jumlahTpl[$kunci] ?? 0 ?>)
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
 
         <div class="aksi">
             <button type="button" class="tombol-kecil" id="pilih-semua">Pilih semua</button>
@@ -241,12 +298,19 @@ $pelanggan = $bd->query("
         </div>
 
         <div class="daftar" id="daftar">
-            <?php foreach ($pelanggan as $p): ?>
+            <?php foreach ($pelanggan as $p):
+                // Template yang tidak lagi terdaftar tetap ditampilkan apa adanya
+                // agar sisa data lama gampang ditemukan.
+                $tplKunci = $p['template'] ?: $templateAwal;
+                $tplLabel = $daftarTpl[$tplKunci] ?? ($tplKunci . ' (tidak terdaftar)');
+                ?>
                 <label class="item"
-                       data-cari="<?= htmlspecialchars(strtolower($p['id'] . ' ' . $p['nama']), ENT_QUOTES) ?>">
+                       data-tpl="<?= htmlspecialchars($tplKunci, ENT_QUOTES) ?>"
+                       data-cari="<?= htmlspecialchars(strtolower($p['id'] . ' ' . $p['nama'] . ' ' . $tplLabel), ENT_QUOTES) ?>">
                     <input type="checkbox" name="pelanggan[]" value="<?= htmlspecialchars($p['id'], ENT_QUOTES) ?>">
                     <span class="id"><?= htmlspecialchars($p['id']) ?></span>
                     <span class="nama"><?= htmlspecialchars($p['nama']) ?></span>
+                    <span class="tpl"><?= htmlspecialchars($tplLabel) ?></span>
                 </label>
             <?php endforeach; ?>
             <div class="kosong" id="kosong">Tidak ada pelanggan yang cocok.</div>
@@ -274,18 +338,28 @@ $pelanggan = $bd->query("
         return el.style.display !== 'none';
     }
 
-    cari.addEventListener('input', function () {
-        const q = this.value.trim().toLowerCase();
+    const saringTpl = document.getElementById('saring-tpl');
+
+    // Kotak cari dan penyaring template dievaluasi bersama, supaya
+    // keduanya bisa dipakai sekaligus.
+    function saring() {
+        const q   = cari.value.trim().toLowerCase();
+        const tpl = saringTpl.value;
         let ada = 0;
 
         items.forEach(el => {
-            const cocok = el.dataset.cari.includes(q);
+            const cocok = el.dataset.cari.includes(q)
+                && (tpl === '' || el.dataset.tpl === tpl);
+
             el.style.display = cocok ? '' : 'none';
             if (cocok) ada++;
         });
 
         kosong.style.display = ada === 0 ? 'block' : 'none';
-    });
+    }
+
+    cari.addEventListener('input', saring);
+    saringTpl.addEventListener('change', saring);
 
     // "Pilih semua" hanya untuk item yang sedang terlihat (hasil filter)
     document.getElementById('pilih-semua').addEventListener('click', function () {
