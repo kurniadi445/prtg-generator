@@ -50,6 +50,20 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
         a.nav { color: var(--biru); font-size: 14px; text-decoration: none; }
         a.nav:hover { text-decoration: underline; }
 
+        .worker { align-items: center; background: #fff; border: 1px solid var(--garis); border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; flex-wrap: wrap; gap: 12px; margin: 0 auto 14px; max-width: 900px; padding: 12px 16px; }
+        .worker .lampu { border-radius: 50%; flex: none; height: 10px; width: 10px; }
+        .worker .lampu.hidup { background: #198754; box-shadow: 0 0 0 3px rgba(25,135,84,.18); }
+        .worker .lampu.mati  { background: #dc3545; box-shadow: 0 0 0 3px rgba(220,53,69,.18); }
+        .worker .lampu.tanya { background: #8a909a; }
+        .worker .teks { font-size: 14px; }
+        .worker .rinci { color: var(--redup); font-size: 12px; }
+        .worker .tombol { display: flex; gap: 8px; margin-left: auto; }
+        .worker button { background: #eef1f5; border: 1px solid var(--garis); border-radius: 6px; cursor: pointer; font-size: 13px; padding: 7px 14px; }
+        .worker button:hover:not(:disabled) { background: #e2e6ec; }
+        .worker button:disabled { cursor: not-allowed; opacity: .5; }
+        .worker button.mulai { background: var(--biru); border-color: var(--biru); color: #fff; font-weight: bold; }
+        .worker button.mulai:hover:not(:disabled) { background: var(--biru-tua); }
+
         .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 auto 14px; max-width: 900px; }
         .chip { background: #fff; border: 1px solid var(--garis); border-radius: 999px; cursor: pointer; font-size: 13px; padding: 7px 14px; }
         .chip.aktif { background: var(--biru); border-color: var(--biru); color: #fff; }
@@ -90,6 +104,18 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
         <a class="nav" href="index.php">← Generator</a>
         &nbsp;·&nbsp;
         <a class="nav" href="hasil.php">Hasil Laporan</a>
+    </span>
+</div>
+
+<div class="worker" id="panel-worker">
+    <span class="lampu tanya" id="worker-lampu"></span>
+    <span>
+        <span class="teks" id="worker-teks">Memeriksa status worker…</span><br>
+        <span class="rinci" id="worker-rinci">&nbsp;</span>
+    </span>
+    <span class="tombol">
+        <button type="button" class="mulai" id="worker-mulai" disabled>Nyalakan</button>
+        <button type="button" id="worker-henti" disabled>Hentikan</button>
     </span>
 </div>
 
@@ -183,6 +209,92 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
     }));
 
     if (cari) cari.addEventListener('input', terapkan);
+
+    // ---------------- Panel worker ----------------
+    const lampu  = document.getElementById('worker-lampu');
+    const teks   = document.getElementById('worker-teks');
+    const rinci  = document.getElementById('worker-rinci');
+    const btnOn  = document.getElementById('worker-mulai');
+    const btnOff = document.getElementById('worker-henti');
+
+    let adaJobBerjalan = false;
+
+    function durasi(detik) {
+        if (detik === null || detik === undefined) return '';
+        const j = Math.floor(detik / 3600);
+        const m = Math.floor((detik % 3600) / 60);
+        const d = detik % 60;
+        if (j) return j + ' jam ' + m + ' menit';
+        if (m) return m + ' menit ' + d + ' detik';
+        return d + ' detik';
+    }
+
+    function gambar(st) {
+        const bisa = st.boleh_kendali;
+
+        lampu.className = 'lampu ' + (st.berjalan ? 'hidup' : 'mati');
+
+        if (st.berjalan) {
+            teks.textContent = st.kegiatan === 'processing'
+                ? 'Worker berjalan — sedang memproses job'
+                : 'Worker berjalan — menunggu job';
+
+            const bagian = ['PID ' + st.pid, 'aktif ' + durasi(st.uptime)];
+            if (st.job_id) bagian.push('job ' + st.job_id);
+            if (st.berhenti_diminta) bagian.push('menunggu berhenti');
+            rinci.textContent = bagian.join(' · ');
+        } else {
+            teks.textContent = 'Worker tidak berjalan';
+            rinci.textContent = st.antre > 0
+                ? st.antre + ' job menunggu dan tidak akan diproses sampai worker dinyalakan'
+                : 'Tidak ada job yang menunggu';
+        }
+
+        btnOn.disabled  = st.berjalan || !bisa;
+        btnOff.disabled = !st.berjalan || !bisa || st.berhenti_diminta;
+
+        if (!bisa) {
+            btnOn.title = btnOff.title = 'Hanya bisa dari komputer server';
+        }
+
+        // Muat ulang halaman saat job selesai, agar tabelnya ikut segar.
+        const berjalanSekarang = st.diproses > 0;
+        if (adaJobBerjalan && !berjalanSekarang) location.reload();
+        adaJobBerjalan = berjalanSekarang;
+    }
+
+    async function muatStatus() {
+        try {
+            const r = await fetch('worker-control.php?aksi=status', { cache: 'no-store' });
+            gambar(await r.json());
+        } catch (e) {
+            lampu.className = 'lampu tanya';
+            teks.textContent = 'Status worker tidak bisa dibaca';
+            rinci.textContent = 'Periksa apakah worker-control.php ada di folder aplikasi';
+        }
+    }
+
+    async function kirim(aksi, tombol) {
+        tombol.disabled = true;
+        rinci.textContent = 'Memproses…';
+
+        try {
+            const r = await fetch('worker-control.php?aksi=' + aksi, { cache: 'no-store' });
+            const j = await r.json();
+            if (j.pesan) rinci.textContent = j.pesan;
+            if (!j.ok) lampu.className = 'lampu tanya';
+        } catch (e) {
+            rinci.textContent = 'Permintaan gagal.';
+        }
+
+        setTimeout(muatStatus, 800);
+    }
+
+    btnOn.addEventListener('click',  () => kirim('start', btnOn));
+    btnOff.addEventListener('click', () => kirim('stop',  btnOff));
+
+    muatStatus();
+    setInterval(muatStatus, 5000);
 </script>
 </body>
 </html>

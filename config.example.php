@@ -29,6 +29,13 @@ return [
         'password' => 'KATA_SANDI_PRTG',
     ],
 
+    // Pengaturan worker pemroses antrean
+    'worker' => [
+        // Berkas PHP yang dipakai saat worker dinyalakan dari browser
+        // (tombol di halaman Antrean). Sesuaikan dengan lokasi XAMPP Anda.
+        'php_binary' => 'C:\\xampp\\php\\php.exe',
+    ],
+
     // Pengaturan umum pembuatan laporan Word
     'report' => [
         // URL basis aplikasi ini di web server, dipakai Browsershot untuk render HTML
