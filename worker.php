@@ -1,6 +1,6 @@
 <?php
-require 'database.php';
-require 'generate-report.php';
+require_once 'database.php';
+require_once 'generate-report.php';
 
 $bd = db();
 

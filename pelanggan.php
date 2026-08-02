@@ -1,5 +1,5 @@
 <?php
-require 'database.php';
+require_once 'database.php';
 require_once 'helpers.php';
 
 $bd = db();
@@ -74,6 +74,14 @@ $pelanggan = $bd->query('SELECT id, nama, template FROM pelanggan ORDER BY nama'
 
 $daftarTpl    = daftarTemplate();
 $templateAwal = config('report')['default_template'] ?? 'idt';
+
+// Jumlah pelanggan per template, untuk ditampilkan di penyaring.
+$jumlahTpl = [];
+
+foreach ($pelanggan as $p) {
+    $kunci = $p['template'] ?: $templateAwal;
+    $jumlahTpl[$kunci] = ($jumlahTpl[$kunci] ?? 0) + 1;
+}
 
 $ok  = $_GET['ok']  ?? '';
 $err = $_GET['err'] ?? '';
@@ -175,6 +183,11 @@ $err = $_GET['err'] ?? '';
         .tambah .grp.tpl { flex: 0 0 210px; }
 
         td.tpl { color: #5b616b; font-size: 13px; white-space: nowrap; }
+
+        .saring { align-items: center; display: flex; gap: 8px; margin-bottom: 12px; }
+        .saring label { color: #8a909a; font-size: 13px; white-space: nowrap; }
+        .saring select { width: auto; }
+        .saring .sisa { color: #8a909a; font-size: 13px; margin-left: auto; }
 
         .edit-form select { flex: 0 0 auto; width: auto; }
 
@@ -288,6 +301,19 @@ $err = $_GET['err'] ?? '';
 <div class="kartu">
     <input id="cari" type="text" placeholder="🔍 Cari nama, ID, atau template..." autocomplete="off">
 
+    <div class="saring">
+        <label for="saring-tpl">Template:</label>
+        <select id="saring-tpl">
+            <option value="">Semua (<?= count($pelanggan) ?>)</option>
+            <?php foreach ($daftarTpl as $kunci => $label): ?>
+                <option value="<?= htmlspecialchars($kunci, ENT_QUOTES) ?>">
+                    <?= htmlspecialchars($label) ?> (<?= $jumlahTpl[$kunci] ?? 0 ?>)
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <span class="sisa" id="jml-tampil"></span>
+    </div>
+
     <table>
         <thead>
         <tr>
@@ -307,7 +333,8 @@ $err = $_GET['err'] ?? '';
             $tplKunci = $p['template'] ?: $templateAwal;
             $tplLabel = $daftarTpl[$tplKunci] ?? ($tplKunci . ' (tidak terdaftar)');
             ?>
-            <tr data-cari="<?= htmlspecialchars(strtolower($p['id'] . ' ' . $p['nama'] . ' ' . $tplLabel), ENT_QUOTES) ?>">
+            <tr data-tpl="<?= htmlspecialchars($tplKunci, ENT_QUOTES) ?>"
+                data-cari="<?= htmlspecialchars(strtolower($p['id'] . ' ' . $p['nama'] . ' ' . $tplLabel), ENT_QUOTES) ?>">
                 <td class="id"><?= $idAman ?></td>
                 <td>
                     <span class="nama-text"><?= $namaAman ?></span>
@@ -350,13 +377,30 @@ $err = $_GET['err'] ?? '';
 
     const rows = Array.from(document.querySelectorAll('#tbody tr'));
 
-    // Pencarian
-    document.getElementById('cari').addEventListener('input', function () {
-        const q = this.value.trim().toLowerCase();
+    // Pencarian teks dan penyaring template dievaluasi bersama,
+    // supaya keduanya bisa dipakai sekaligus.
+    const cari      = document.getElementById('cari');
+    const saringTpl = document.getElementById('saring-tpl');
+    const jmlTampil = document.getElementById('jml-tampil');
+
+    function saring() {
+        const q   = cari.value.trim().toLowerCase();
+        const tpl = saringTpl.value;
+        let ada = 0;
+
         rows.forEach(tr => {
-            tr.classList.toggle('tersembunyi', !tr.dataset.cari.includes(q));
+            const cocok = tr.dataset.cari.includes(q)
+                && (tpl === '' || tr.dataset.tpl === tpl);
+
+            tr.classList.toggle('tersembunyi', !cocok);
+            if (cocok) ada++;
         });
-    });
+
+        jmlTampil.textContent = ada === rows.length ? '' : ada + ' ditampilkan';
+    }
+
+    cari.addEventListener('input', saring);
+    saringTpl.addEventListener('change', saring);
 
     // Ubah / Batal (edit inline)
     rows.forEach(tr => {

@@ -1,6 +1,6 @@
 <?php
 
-require 'database.php';
+require_once 'database.php';
 
 $dari          = $_POST['dari'] ?? '';
 $sampai        = $_POST['sampai'] ?? '';

@@ -1,7 +1,7 @@
 <?php
 
-require 'helpers.php';
-require 'database.php';
+require_once 'helpers.php';
+require_once 'database.php';
 
 /**
  * Hapus baris job_files yang cocok dengan nama file (non-fatal bila DB error).
@@ -164,6 +164,9 @@ $err = $_GET['err'] ?? '';
         summary a.zip { background: #eef1f5; border: 1px solid var(--garis); border-radius: 6px; color: var(--teks); flex: none; font-size: 12px; font-weight: bold; padding: 5px 10px; text-decoration: none; white-space: nowrap; }
         summary a.zip:hover { background: var(--biru); border-color: var(--biru); color: #fff; }
 
+        a.zip-semua { background: var(--biru); border-radius: 6px; color: #fff; font-size: 13px; font-weight: bold; padding: 7px 14px; text-decoration: none; white-space: nowrap; }
+        a.zip-semua:hover { background: var(--biru-tua, #0062cc); }
+
         .toolbar { background: #fbfcfd; border-top: 1px solid #f2f4f7; padding: 8px 18px; }
         .btn-hapus-folder { background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: var(--merah); cursor: pointer; font-size: 13px; padding: 6px 12px; }
         .btn-hapus-folder:hover { background: var(--merah); border-color: var(--merah); color: #fff; }
@@ -187,6 +190,11 @@ $err = $_GET['err'] ?? '';
 <div class="bar">
     <h2>Hasil Laporan</h2>
     <span>
+        <?php if ($totalFile): ?>
+            <a class="zip-semua" href="unduh.php"
+               title="Unduh <?= $totalFile ?> file (<?= formatBytes($totalUkuran) ?>) sebagai satu ZIP">⬇ Unduh Semua</a>
+            &nbsp;&nbsp;
+        <?php endif; ?>
         <a class="nav" href="index.php">← Generator</a>
         &nbsp;·&nbsp;
         <a class="nav" href="pelanggan.php">Kelola Pelanggan</a>
@@ -216,7 +224,7 @@ $err = $_GET['err'] ?? '';
                         <span class="kar">📁</span>
                         <span class="nm"><?= htmlspecialchars($fo['nama']) ?></span>
                         <span class="jm"><?= $fo['jumlah'] ?> file · <?= htmlspecialchars($fo['ukuran']) ?></span>
-                        <a class="zip" href="unduh-folder.php?folder=<?= rawurlencode($fo['nama']) ?>"
+                        <a class="zip" href="unduh.php?folder=<?= rawurlencode($fo['nama']) ?>"
                            onclick="event.stopPropagation()" title="Unduh semua sebagai ZIP">⬇ ZIP</a>
                         <span class="panah">▸</span>
                     </summary>

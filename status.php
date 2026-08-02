@@ -1,7 +1,7 @@
 <?php
 
-require 'database.php';
-require 'helpers.php';
+require_once 'database.php';
+require_once 'helpers.php';
 
 $id = $_GET['id'] ?? '';
 
