@@ -20,7 +20,7 @@ $rootReal = realpath('jobs');
 
 if ($rootReal === false) {
     $gagal(404, 'Folder jobs/ tidak ditemukan.');
-};
+}
 
 /**
  * Pastikan sebuah path benar-benar berada di dalam jobs/.
@@ -55,11 +55,10 @@ if ($folder !== '') {
     $namaZip = $folder . '.zip';
 } else {
     // --- Seluruh hasil, struktur folder dipertahankan ---
-    foreach (glob($rootReal . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
-        if (!$diDalamRoot($dir)) {
-            continue;
-        }
-
+    // Path relatif dipakai di sini supaya pemisah direktorinya konsisten.
+    // Mencampur hasil realpath() (backslash di Windows) dengan pola '/'
+    // membuat perbandingan path selalu gagal.
+    foreach (glob('jobs/*', GLOB_ONLYDIR) ?: [] as $dir) {
         foreach (glob($dir . '/*.docx') ?: [] as $path) {
             $isi[$path] = basename($dir) . '/' . basename($path);
         }
