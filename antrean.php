@@ -5,6 +5,111 @@ require_once 'helpers.php';
 
 $bd = db();
 
+/**
+ * Apakah worker sedang hidup? Dipakai untuk melindungi job yang sedang
+ * diproses agar tidak dihapus di tengah jalan.
+ */
+function workerSedangHidup(): bool
+{
+    $berkas = 'tmp/worker.json';
+
+    if (!is_file($berkas)) {
+        return false;
+    }
+
+    $detak = json_decode((string) file_get_contents($berkas), true);
+
+    return is_array($detak)
+        && !empty($detak['last_seen'])
+        && (time() - (int) $detak['last_seen']) <= 15;
+}
+
+/**
+ * Penghapusan job diproses lewat POST lalu redirect (pola PRG), agar
+ * refresh halaman tidak mengirim ulang perintah hapus.
+ *
+ * Catatan: yang dihapus hanya baris di database. Berkas .docx yang sudah
+ * jadi tetap ada dan dikelola di halaman Hasil Laporan.
+ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $aksi = $_POST['aksi'] ?? '';
+    $id   = trim($_POST['id'] ?? '');
+
+    $pesan = fn(string $k, string $v) => header('Location: antrean.php?' . $k . '=' . urlencode($v));
+
+    // Job yang sedang diproses hanya boleh dihapus bila worker sudah mati;
+    // kalau tidak, worker akan tetap menulis hasil untuk job yang sudah hilang.
+    $lindungiProses = workerSedangHidup();
+
+    try {
+        if ($aksi === 'hapus') {
+            if ($id === '') {
+                $pesan('err', 'ID job tidak valid.');
+                exit;
+            }
+
+            $cek = $bd->prepare('SELECT status FROM jobs WHERE id = ?');
+            $cek->execute([$id]);
+            $status = $cek->fetchColumn();
+
+            if ($status === false) {
+                $pesan('err', 'Job tidak ditemukan.');
+            } elseif ($status === 'processing' && $lindungiProses) {
+                $pesan('err', 'Job ini sedang diproses worker. Hentikan worker lebih dulu.');
+            } else {
+                $bd->prepare('DELETE FROM job_files WHERE job_id = ?')->execute([$id]);
+                $bd->prepare('DELETE FROM jobs WHERE id = ?')->execute([$id]);
+                $pesan('ok', 'Job dihapus.');
+            }
+        } elseif ($aksi === 'bersihkan') {
+            // Kelompok status yang boleh dibersihkan sekaligus.
+            $kelompok = [
+                'done'   => ['status' => ['done'],            'label' => 'selesai'],
+                'failed' => ['status' => ['failed'],          'label' => 'gagal'],
+                'queued' => ['status' => ['queued'],          'label' => 'antre'],
+                'semua'  => ['status' => ['done', 'failed', 'queued', 'processing'], 'label' => ''],
+            ];
+
+            $pilih = $_POST['kelompok'] ?? '';
+
+            if (!isset($kelompok[$pilih])) {
+                $pesan('err', 'Kelompok tidak dikenal.');
+                exit;
+            }
+
+            $status = $kelompok[$pilih]['status'];
+
+            if ($lindungiProses) {
+                $status = array_values(array_diff($status, ['processing']));
+            }
+
+            if (!$status) {
+                $pesan('err', 'Tidak ada job yang boleh dihapus saat worker berjalan.');
+                exit;
+            }
+
+            $tanda = implode(',', array_fill(0, count($status), '?'));
+
+            $bd->prepare("DELETE FROM job_files WHERE job_id IN (SELECT id FROM jobs WHERE status IN ($tanda))")
+                ->execute($status);
+
+            $hapus = $bd->prepare("DELETE FROM jobs WHERE status IN ($tanda)");
+            $hapus->execute($status);
+
+            $n     = $hapus->rowCount();
+            $label = $kelompok[$pilih]['label'];
+
+            $pesan('ok', $n . ' job' . ($label ? ' ' . $label : '') . ' dihapus.');
+        } else {
+            $pesan('err', 'Aksi tidak dikenal.');
+        }
+    } catch (Throwable $e) {
+        $pesan('err', 'Gagal memproses: ' . $e->getMessage());
+    }
+
+    exit;
+}
+
 $jobs = $bd->query("
     SELECT j.id, j.pelanggan, j.status, j.bulan_mulai, j.bulan_akhir,
            j.created_at, j.finished_at,
@@ -14,6 +119,9 @@ $jobs = $bd->query("
     LEFT JOIN pelanggan p ON p.id = j.pelanggan
     ORDER BY j.created_at DESC
 ")->fetchAll(PDO::FETCH_ASSOC);
+
+$ok  = $_GET['ok']  ?? '';
+$err = $_GET['err'] ?? '';
 
 $statusInfo = [
     'queued'     => ['Antre', 'antre'],
@@ -63,6 +171,22 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
         .worker button:disabled { cursor: not-allowed; opacity: .5; }
         .worker button.mulai { background: var(--biru); border-color: var(--biru); color: #fff; font-weight: bold; }
         .worker button.mulai:hover:not(:disabled) { background: var(--biru-tua); }
+
+        .flash { border-radius: 8px; font-size: 14px; margin: 0 auto 14px; max-width: 900px; padding: 12px 16px; }
+        .flash.ok  { background: #e7f6ec; border: 1px solid #b6e3c4; color: #198754; }
+        .flash.err { background: #fdeaec; border: 1px solid #f3c2c7; color: #dc3545; }
+
+        .bersih { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin: 0 auto 14px; max-width: 900px; }
+        .bersih span.ket { color: var(--redup); font-size: 12px; margin-left: auto; }
+        .bersih button { background: #fff; border: 1px solid var(--garis); border-radius: 6px; cursor: pointer; font-size: 13px; padding: 6px 12px; }
+        .bersih button:hover:not(:disabled) { background: #f2f4f7; }
+        .bersih button:disabled { cursor: not-allowed; opacity: .5; }
+        .bersih button.bahaya { border-color: #f0c2c7; color: #dc3545; }
+        .bersih button.bahaya:hover:not(:disabled) { background: #fdeaec; }
+
+        td.aksi form { display: inline; }
+        td.aksi button.hapus { background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: #dc3545; cursor: pointer; font-size: 12px; margin-left: 6px; padding: 4px 9px; }
+        td.aksi button.hapus:hover { background: #fdeaec; }
 
         .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 auto 14px; max-width: 900px; }
         .chip { background: #fff; border: 1px solid var(--garis); border-radius: 999px; cursor: pointer; font-size: 13px; padding: 7px 14px; }
@@ -119,6 +243,25 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
     </span>
 </div>
 
+<?php if ($ok !== ''): ?>
+    <div class="flash ok"><?= htmlspecialchars($ok) ?></div>
+<?php endif; ?>
+<?php if ($err !== ''): ?>
+    <div class="flash err"><?= htmlspecialchars($err) ?></div>
+<?php endif; ?>
+
+<?php if ($jobs): ?>
+    <form class="bersih" method="post" id="form-bersih">
+        <input type="hidden" name="aksi" value="bersihkan">
+        <input type="hidden" name="kelompok" id="kelompok">
+        <button type="button" data-kelompok="done"   <?= $jumlah['done']   ? '' : 'disabled' ?>>Bersihkan selesai (<?= $jumlah['done'] ?>)</button>
+        <button type="button" data-kelompok="failed" <?= $jumlah['failed'] ? '' : 'disabled' ?>>Bersihkan gagal (<?= $jumlah['failed'] ?>)</button>
+        <button type="button" data-kelompok="queued" <?= $jumlah['queued'] ? '' : 'disabled' ?>>Batalkan antrean (<?= $jumlah['queued'] ?>)</button>
+        <button type="button" class="bahaya" data-kelompok="semua">Hapus semua (<?= count($jobs) ?>)</button>
+        <span class="ket">Hanya menghapus riwayat; berkas .docx tetap ada di Hasil Laporan</span>
+    </form>
+<?php endif; ?>
+
 <div class="chips">
     <span class="chip aktif" data-filter="all">Semua <b>(<?= count($jobs) ?>)</b></span>
     <span class="chip" data-filter="aktif">Berlangsung <b>(<?= $jumlah['queued'] + $jumlah['processing'] ?>)</b></span>
@@ -139,7 +282,7 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
                 <th style="width:110px">Status</th>
                 <th style="width:90px">File</th>
                 <th style="width:150px">Dibuat</th>
-                <th style="width:110px"></th>
+                <th style="width:150px"></th>
             </tr>
             </thead>
             <tbody id="tbody">
@@ -160,7 +303,15 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
                     <td><span class="badge <?= $stKelas ?>"><?= htmlspecialchars($stLabel) ?></span></td>
                     <td><?= (int) $j['jml_file'] ?><?= $harap ? ' / ' . $harap : '' ?></td>
                     <td class="sub"><?= htmlspecialchars($j['created_at']) ?></td>
-                    <td class="aksi"><a href="status.php?id=<?= htmlspecialchars($j['id'], ENT_QUOTES) ?>">Detail →</a></td>
+                    <td class="aksi">
+                        <a href="status.php?id=<?= htmlspecialchars($j['id'], ENT_QUOTES) ?>">Detail →</a>
+                        <form method="post"
+                              onsubmit="return confirm('Hapus job ini dari riwayat?');">
+                            <input type="hidden" name="aksi" value="hapus">
+                            <input type="hidden" name="id" value="<?= htmlspecialchars($j['id'], ENT_QUOTES) ?>">
+                            <button type="submit" class="hapus" title="Hapus job">✕</button>
+                        </form>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             <tr id="tak-ada"><td colspan="6" class="kosong">Tidak ada job yang cocok.</td></tr>
@@ -209,6 +360,29 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
     }));
 
     if (cari) cari.addEventListener('input', terapkan);
+
+    // ---------------- Tombol bersihkan ----------------
+    const formBersih = document.getElementById('form-bersih');
+
+    if (formBersih) {
+        const teksKonfirmasi = {
+            done:   'Hapus semua job berstatus selesai dari riwayat?',
+            failed: 'Hapus semua job berstatus gagal dari riwayat?',
+            queued: 'Batalkan semua job yang masih antre?',
+            semua:  'Hapus SELURUH riwayat job? Tindakan ini tidak bisa dibatalkan.'
+        };
+
+        formBersih.querySelectorAll('button[data-kelompok]').forEach(b => {
+            b.addEventListener('click', () => {
+                const k = b.dataset.kelompok;
+
+                if (!confirm(teksKonfirmasi[k])) return;
+
+                document.getElementById('kelompok').value = k;
+                formBersih.submit();
+            });
+        });
+    }
 
     // ---------------- Panel worker ----------------
     const lampu  = document.getElementById('worker-lampu');
