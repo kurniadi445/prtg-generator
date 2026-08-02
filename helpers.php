@@ -1,11 +1,13 @@
 <?php
 
 /**
- * Fungsi bantu yang dipakai bersama beberapa halaman.
+ * Fungsi bantu yang dipakai bersama beberapa halaman dan semua template.
  */
 
+require_once __DIR__ . '/database.php';
+
 /**
- * Bersihkan nama pelanggan agar aman dipakai sebagai nama folder.
+ * Bersihkan nama pelanggan agar aman dipakai sebagai nama folder/berkas.
  */
 function sanitizeFolderName(string $name, int $maxLength = 100): string
 {
@@ -71,4 +73,46 @@ function monthCountInclusive(?string $mulai, ?string $akhir): ?int
     $selisih = $a->diff($b);
 
     return $selisih->y * 12 + $selisih->m + 1;
+}
+
+/**
+ * Style font yang dipakai berulang di laporan.
+ */
+function fontStyle(int $size, bool $bold = false, string $name = 'Times New Roman'): array
+{
+    return ['name' => $name, 'size' => $size, 'bold' => $bold];
+}
+
+/**
+ * Ubah total detik menjadi teks durasi, mis. "1 jam 16 menit 5 detik".
+ */
+function formatDurasi(int $detik): string
+{
+    $bagian = [];
+
+    $hari  = intdiv($detik, 86400);
+    $jam   = intdiv($detik % 86400, 3600);
+    $menit = intdiv($detik % 3600, 60);
+    $sisa  = $detik % 60;
+
+    if ($hari)  { $bagian[] = $hari . ' hari'; }
+    if ($jam)   { $bagian[] = $jam . ' jam'; }
+    if ($menit) { $bagian[] = $menit . ' menit'; }
+    if ($sisa)  { $bagian[] = $sisa . ' detik'; }
+
+    return $bagian ? implode(' ', $bagian) : '0 detik';
+}
+
+/**
+ * Daftar template yang terpasang: kunci => label, untuk dipakai di dropdown.
+ */
+function daftarTemplate(): array
+{
+    $hasil = [];
+
+    foreach ((array) config('templates') as $kunci => $opsi) {
+        $hasil[$kunci] = $opsi['label'] ?? $kunci;
+    }
+
+    return $hasil;
 }
