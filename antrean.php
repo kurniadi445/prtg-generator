@@ -120,6 +120,9 @@ $jobs = $bd->query("
     ORDER BY j.created_at DESC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
+// Ikon tong sampah sebagai SVG sebaris, sama seperti di hasil.php.
+$ikonHapus = '<svg class="ikon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
 $ok  = $_GET['ok']  ?? '';
 $err = $_GET['err'] ?? '';
 
@@ -185,7 +188,8 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
         .bersih button.bahaya:hover:not(:disabled) { background: #fdeaec; }
 
         td.aksi form { display: inline; }
-        td.aksi button.hapus { background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: #dc3545; cursor: pointer; font-size: 12px; margin-left: 6px; padding: 4px 9px; }
+        .ikon { flex: none; height: 14px; vertical-align: -2px; width: 14px; }
+        td.aksi button.hapus { align-items: center; background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: #dc3545; cursor: pointer; display: inline-flex; margin-left: 6px; padding: 5px 9px; vertical-align: middle; }
         td.aksi button.hapus:hover { background: #fdeaec; }
 
         .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 auto 14px; max-width: 900px; }
@@ -309,7 +313,7 @@ $adaAktif = ($jumlah['queued'] + $jumlah['processing']) > 0;
                               onsubmit="return confirm('Hapus job ini dari riwayat?');">
                             <input type="hidden" name="aksi" value="hapus">
                             <input type="hidden" name="id" value="<?= htmlspecialchars($j['id'], ENT_QUOTES) ?>">
-                            <button type="submit" class="hapus" title="Hapus job">✕</button>
+                            <button type="submit" class="hapus" title="Hapus job"><?= $ikonHapus ?></button>
                         </form>
                     </td>
                 </tr>

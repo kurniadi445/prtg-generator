@@ -120,6 +120,10 @@ if (is_dir($root)) {
     usort($folders, fn($a, $b) => strcmp($a['nama'], $b['nama']));
 }
 
+// Ikon tong sampah sebagai SVG sebaris. Emoji WASTEBASKET (U+1F5D1) tidak tersedia
+// di font bawaan sebagian Windows, sehingga tampil sebagai kotak kosong.
+$ikonHapus = '<svg class="ikon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
 $ok  = $_GET['ok']  ?? '';
 $err = $_GET['err'] ?? '';
 ?>
@@ -168,7 +172,9 @@ $err = $_GET['err'] ?? '';
         a.zip-semua:hover { background: var(--biru-tua, #0062cc); }
 
         .toolbar { background: #fbfcfd; border-top: 1px solid #f2f4f7; padding: 8px 18px; }
-        .btn-hapus-folder { background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: var(--merah); cursor: pointer; font-size: 13px; padding: 6px 12px; }
+        .ikon { flex: none; height: 14px; vertical-align: -2px; width: 14px; }
+
+        .btn-hapus-folder { align-items: center; background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: var(--merah); cursor: pointer; display: inline-flex; font-size: 13px; gap: 6px; padding: 6px 12px; }
         .btn-hapus-folder:hover { background: var(--merah); border-color: var(--merah); color: #fff; }
 
         .file { align-items: center; border-top: 1px solid #f2f4f7; display: flex; gap: 12px; padding: 10px 18px 10px 46px; }
@@ -178,7 +184,7 @@ $err = $_GET['err'] ?? '';
         .file .meta { color: var(--redup); font-size: 12px; }
         .file a.unduh { background: #eef1f5; border: 1px solid var(--garis); border-radius: 6px; color: var(--teks); flex: none; font-size: 13px; padding: 6px 14px; text-decoration: none; }
         .file a.unduh:hover { background: var(--biru); border-color: var(--biru); color: #fff; }
-        .file button.hapus1 { background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: var(--merah); cursor: pointer; flex: none; font-size: 14px; padding: 6px 10px; }
+        .file button.hapus1 { align-items: center; background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: var(--merah); cursor: pointer; display: inline-flex; flex: none; font-size: 14px; padding: 7px 10px; }
         .file button.hapus1:hover { background: var(--merah); border-color: var(--merah); color: #fff; }
         form.inline { display: inline; margin: 0; }
 
@@ -234,7 +240,7 @@ $err = $_GET['err'] ?? '';
                               onsubmit="return confirm('Hapus SEMUA <?= $fo['jumlah'] ?> file di folder ini? Tindakan tidak bisa dibatalkan.');">
                             <input type="hidden" name="aksi" value="hapus_folder">
                             <input type="hidden" name="folder" value="<?= $namaAman ?>">
-                            <button type="submit" class="btn-hapus-folder">🗑 Hapus folder ini</button>
+                            <button type="submit" class="btn-hapus-folder"><?= $ikonHapus ?>Hapus folder ini</button>
                         </form>
                     </div>
 
@@ -251,7 +257,7 @@ $err = $_GET['err'] ?? '';
                                 <input type="hidden" name="aksi" value="hapus_file">
                                 <input type="hidden" name="folder" value="<?= $namaAman ?>">
                                 <input type="hidden" name="file" value="<?= htmlspecialchars($f['nama'], ENT_QUOTES) ?>">
-                                <button type="submit" class="hapus1" title="Hapus file">🗑</button>
+                                <button type="submit" class="hapus1" title="Hapus file"><?= $ikonHapus ?></button>
                             </form>
                         </div>
                     <?php endforeach; ?>
