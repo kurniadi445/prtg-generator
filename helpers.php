@@ -201,6 +201,36 @@ function hapusFolderDocx(string $dirFisik): int
 }
 
 /**
+ * Buang folder-folder kosong di dalam $akar, dari yang terdalam lebih dulu.
+ * $akar sendiri tidak pernah dihapus.
+ *
+ * Dipanggil setelah penghapusan berkas, supaya jobs/ tidak menyisakan
+ * kerangka folder pelanggan yang isinya sudah tidak ada.
+ */
+function rapikanFolderKosong(string $akar): void
+{
+    if (!is_dir($akar)) {
+        return;
+    }
+
+    foreach (scandir($akar) ?: [] as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $anak = $akar . DIRECTORY_SEPARATOR . $item;
+
+        if (is_dir($anak)) {
+            rapikanFolderKosong($anak);
+
+            // rmdir() hanya berhasil bila folder benar-benar kosong,
+            // jadi tidak perlu diperiksa lagi di sini.
+            @rmdir($anak);
+        }
+    }
+}
+
+/**
  * Daftar template yang terpasang: kunci => label, untuk dipakai di dropdown.
  */
 function daftarTemplate(): array

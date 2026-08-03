@@ -164,59 +164,247 @@ function pindaiPohon(array $labelTemplate): array
 // ---------------------------------------------------------------------
 
 /**
- * Hapus baris job_files yang cocok dengan nama berkas (non-fatal bila DB error).
+ * Lepaskan rujukan ke berkas yang baru saja dihapus.
+ *
+ * Dua tempat yang menyimpan rujukan:
+ *   job_files    - riwayat berkas per job; barisnya ikut dihapus
+ *   sla_bulanan  - kolom file_docx; HANYA dikosongkan, barisnya dipertahankan
+ *
+ * Rekap SLA sengaja tidak ikut terhapus. Justru itu gunanya angka SLA
+ * dipindahkan ke database: dokumen Word boleh dibuang untuk melegakan
+ * penyimpanan, riwayat uptime-nya tetap bisa dibaca di sla.php.
+ *
+ * Kegagalan di sini tidak fatal — berkas fisiknya sudah terhapus.
+ *
+ * @param array $pathPenuh path relatif berikut awalan jobs/, mis.
+ *                         'jobs/idt/PT ABC/2026-07 - PT ABC.docx'
  */
-function bersihkanJobFiles(array $filenames): void
+function lepasRujukanBerkas(array $pathPenuh): void
 {
-    $filenames = array_values(array_unique(array_filter($filenames)));
+    $pathPenuh = array_values(array_unique(array_filter($pathPenuh)));
 
-    if (!$filenames) {
+    if (!$pathPenuh) {
         return;
     }
 
+    $nama  = array_values(array_unique(array_map('basename', $pathPenuh)));
+    $bd    = null;
+
     try {
-        $tanda = implode(',', array_fill(0, count($filenames), '?'));
-        db()->prepare("DELETE FROM job_files WHERE filename IN ($tanda)")->execute($filenames);
+        $bd = db();
+
+        $tandaPath = implode(',', array_fill(0, count($pathPenuh), '?'));
+        $tandaNama = implode(',', array_fill(0, count($nama), '?'));
+
+        // Baris lama (sebelum kolom `path` ada) hanya bisa dicocokkan lewat nama berkas.
+        $bd->prepare(
+            "DELETE FROM job_files WHERE path IN ($tandaPath) OR (path IS NULL AND filename IN ($tandaNama))"
+        )->execute(array_merge($pathPenuh, $nama));
     } catch (Throwable $e) {
-        // abaikan; penghapusan berkas fisik tetap dianggap berhasil
+        // abaikan
+    }
+
+    try {
+        if ($bd === null) {
+            $bd = db();
+        }
+
+        $tandaPath = implode(',', array_fill(0, count($pathPenuh), '?'));
+
+        $bd->prepare("UPDATE sla_bulanan SET file_docx = NULL WHERE file_docx IN ($tandaPath)")
+            ->execute($pathPenuh);
+    } catch (Throwable $e) {
+        // Tabel sla_bulanan mungkin belum dibuat; bukan masalah di sini.
     }
 }
 
+/**
+ * Kumpulkan .docx dengan periode SEBELUM $sebelum ('YYYY-MM'), di seluruh pohon.
+ *
+ * Periode dibaca dari awalan nama berkas ("YYYY-MM - NAMA.docx"). Berkas yang
+ * namanya tidak berpola itu sengaja dilewati — lebih baik tertinggal daripada
+ * terhapus karena salah tebak.
+ *
+ * @return array [path fisik => ['rel' => path relatif jobs/..., 'ukuran' => int]]
+ */
+function docxSebelumPeriode(string $sebelum, string $templateF, array $labelTemplate): array
+{
+    $hasil = [];
+    $akar  = realpath('jobs');
+
+    if ($akar === false) {
+        return $hasil;
+    }
+
+    foreach (kumpulkanDocx($akar) as $fisik => $rel) {
+        $nama = basename($rel);
+
+        if (!preg_match('/^(\d{4}-\d{2})\b/', $nama, $c) || $c[1] >= $sebelum) {
+            continue;
+        }
+
+        if ($templateF !== '') {
+            // Segmen pertama path relatif adalah kunci template, kecuali untuk
+            // arsip lama yang masih berada langsung di bawah jobs/.
+            $segmen = explode('/', str_replace('\\', '/', $rel));
+            $milik  = (count($segmen) > 2 && isset($labelTemplate[$segmen[0]])) ? $segmen[0] : '';
+
+            if ($milik !== $templateF) {
+                continue;
+            }
+        }
+
+        $hasil[$fisik] = ['rel' => $rel, 'ukuran' => (int) filesize($fisik)];
+    }
+
+    ksort($hasil);
+
+    return $hasil;
+}
+
+// ---------------------------------------------------------------------
+// Aksi hapus (pola POST lalu redirect / PRG)
+// ---------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $aksi = $_POST['aksi'] ?? '';
     $rel  = (string) ($_POST['path'] ?? '');
 
     $lempar = fn(string $k, string $v) => header('Location: hasil.php?' . $k . '=' . urlencode($v));
 
+    // --- Pembersihan massal berdasarkan periode ---
+    if ($aksi === 'hapus_periode') {
+        $sebelum   = (string) ($_POST['sebelum'] ?? '');
+        $templateF = (string) ($_POST['template'] ?? '');
+
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $sebelum)) {
+            $lempar('err', 'Periode batas tidak valid.');
+            exit;
+        }
+
+        if ($templateF !== '' && !isset($labelTemplate[$templateF])) {
+            $templateF = '';
+        }
+
+        $sasaran = docxSebelumPeriode($sebelum, $templateF, $labelTemplate);
+
+        $jumlah = 0;
+        $bebas  = 0;
+        $dibuang = [];
+
+        foreach ($sasaran as $fisik => $info) {
+            if (@unlink($fisik)) {
+                $jumlah++;
+                $bebas += $info['ukuran'];
+                $dibuang[] = 'jobs/' . $info['rel'];
+            }
+        }
+
+        lepasRujukanBerkas($dibuang);
+        rapikanFolderKosong(realpath('jobs'));
+
+        $lempar('ok', $jumlah . ' berkas sebelum ' . $sebelum . ' dihapus, '
+            . formatBytes($bebas) . ' dibebaskan.');
+        exit;
+    }
+
+    // --- Aksi yang bekerja pada satu simpul pohon ---
     $target = $rel === '' ? false : jobsPathAman($rel);
 
     if ($target === false) {
         $lempar('err', 'Path tidak valid.');
-    } elseif ($aksi === 'hapus_folder' && is_dir($target)) {
-        $isi = kumpulkanDocx($target);
-        $n   = hapusFolderDocx($target);
+    } elseif (($aksi === 'hapus_folder' || $aksi === 'hapus_cabang') && is_dir($target)) {
+        // Keduanya bekerja sama: buang seluruh .docx di dalamnya, termasuk
+        // subfolder. Bedanya hanya letak tombolnya — cabang template berisi
+        // banyak pelanggan sekaligus, jadi konfirmasinya lebih tegas.
+        $isi   = kumpulkanDocx($target);
+        $bebas = 0;
+
+        foreach (array_keys($isi) as $fisik) {
+            $bebas += (int) filesize($fisik);
+        }
+
+        $n = hapusFolderDocx($target);
+
+        $awalan = trim(str_replace('\\', '/', $rel), '/');
+
+        lepasRujukanBerkas(array_map(
+            fn($r) => 'jobs/' . $awalan . '/' . $r,
+            array_values($isi)
+        ));
 
         @rmdir($target);
-        bersihkanJobFiles(array_map('basename', array_values($isi)));
+        rapikanFolderKosong(realpath('jobs'));
 
-        $lempar('ok', $n . ' berkas dihapus dari "' . basename($target) . '".');
+        $lempar('ok', $n . ' berkas dihapus dari "' . basename($target) . '", '
+            . formatBytes($bebas) . ' dibebaskan.');
+    } elseif ($aksi === 'hapus_tahun' && is_dir($target)) {
+        $tahun = (string) ($_POST['tahun'] ?? '');
+
+        if (!preg_match('/^\d{4}$/', $tahun)) {
+            $lempar('err', 'Tahun tidak valid.');
+            exit;
+        }
+
+        $n      = 0;
+        $bebas  = 0;
+        $dibuang = [];
+        $awalan = trim(str_replace('\\', '/', $rel), '/');
+
+        foreach (glob($target . '/' . $tahun . '-*.docx') ?: [] as $fisik) {
+            $besar = (int) filesize($fisik);
+
+            if (@unlink($fisik)) {
+                $n++;
+                $bebas += $besar;
+                $dibuang[] = 'jobs/' . $awalan . '/' . basename($fisik);
+            }
+        }
+
+        lepasRujukanBerkas($dibuang);
+        rapikanFolderKosong(realpath('jobs'));
+
+        $lempar('ok', $n . ' berkas tahun ' . $tahun . ' dihapus, '
+            . formatBytes($bebas) . ' dibebaskan.');
     } elseif ($aksi === 'hapus_file' && is_file($target)) {
         if (strtolower(pathinfo($target, PATHINFO_EXTENSION)) !== 'docx') {
             $lempar('err', 'Hanya berkas .docx yang boleh dihapus.');
         } else {
-            $induk = dirname($target);
+            $bebas = (int) filesize($target);
 
             @unlink($target);
-            bersihkanJobFiles([basename($target)]);
-            @rmdir($induk);          // ikut terhapus hanya bila sudah kosong
+            lepasRujukanBerkas(['jobs/' . trim(str_replace('\\', '/', $rel), '/')]);
+            rapikanFolderKosong(realpath('jobs'));
 
-            $lempar('ok', 'Berkas dihapus.');
+            $lempar('ok', 'Berkas dihapus, ' . formatBytes($bebas) . ' dibebaskan.');
         }
     } else {
         $lempar('err', 'Aksi tidak dikenal atau target tidak ditemukan.');
     }
 
     exit;
+}
+
+// ---------------------------------------------------------------------
+// Pratinjau pembersihan massal (dipanggil lewat GET, belum menghapus apa pun)
+// ---------------------------------------------------------------------
+$praSebelum  = (string) ($_GET['sebelum'] ?? '');
+$praTemplate = (string) ($_GET['tpl'] ?? '');
+$pratinjau   = null;
+
+if ($praSebelum !== '' && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $praSebelum)) {
+    if ($praTemplate !== '' && !isset($labelTemplate[$praTemplate])) {
+        $praTemplate = '';
+    }
+
+    $sasaran = docxSebelumPeriode($praSebelum, $praTemplate, $labelTemplate);
+
+    $pratinjau = [
+        'sebelum'  => $praSebelum,
+        'template' => $praTemplate,
+        'jumlah'   => count($sasaran),
+        'ukuran'   => array_sum(array_column($sasaran, 'ukuran')),
+        'contoh'   => array_slice(array_column($sasaran, 'rel'), 0, 12),
+    ];
 }
 
 $pohon       = is_dir('jobs') ? pindaiPohon($labelTemplate) : [];
@@ -302,6 +490,22 @@ $err = $_GET['err'] ?? '';
         .btn-hapus-folder { align-items: center; background: #fff; border: 1px solid #f0c2c7; border-radius: 6px; color: var(--merah); cursor: pointer; display: inline-flex; font-size: 12px; gap: 6px; padding: 5px 10px; }
         .btn-hapus-folder:hover { background: var(--merah); border-color: var(--merah); color: #fff; }
 
+        details.simpan { background: #fff; border: 1px solid var(--garis); border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); margin: 0 auto 18px; max-width: 1240px; }
+        details.simpan > summary { align-items: center; cursor: pointer; display: flex; font-size: 14px; font-weight: bold; gap: 10px; list-style: none; padding: 14px 18px; }
+        details.simpan > summary::-webkit-details-marker { display: none; }
+        details.simpan > summary:hover { background: #f7f9fc; }
+        details.simpan .isi-panel { border-top: 1px solid var(--garis); padding: 16px 18px; }
+        details.simpan .baris-form { align-items: flex-end; display: flex; flex-wrap: wrap; gap: 12px; }
+        details.simpan label.kecil { color: var(--redup); display: block; font-size: 12px; margin-bottom: 4px; }
+        details.simpan input[type=month], details.simpan select { border: 1px solid var(--garis); border-radius: 6px; font-size: 14px; padding: 8px 10px; }
+        .btn-abu { background: #eef1f5; border: 1px solid var(--garis); border-radius: 6px; color: var(--teks); cursor: pointer; font-size: 14px; padding: 9px 16px; text-decoration: none; }
+        .btn-abu:hover { background: #e2e6ec; }
+        .btn-merah { background: var(--merah); border: 1px solid var(--merah); border-radius: 6px; color: #fff; cursor: pointer; font-size: 14px; font-weight: bold; padding: 9px 16px; }
+        .btn-merah:hover { background: #b52a37; }
+        .pratinjau { background: #fff8e6; border: 1px solid #f0dfae; border-radius: 8px; color: #8a6d1a; font-size: 13px; line-height: 1.7; margin-top: 14px; padding: 14px 16px; }
+        .pratinjau ul { margin: 8px 0 0; padding-left: 20px; }
+        .pratinjau li { font-family: Consolas, monospace; font-size: 12px; }
+
         .kosong { color: var(--redup); font-size: 14px; padding: 30px 18px; text-align: center; }
         #tak-ada { display: none; }
     </style>
@@ -335,6 +539,75 @@ $err = $_GET['err'] ?? '';
     <div class="flash err"><?= htmlspecialchars($err) ?></div>
 <?php endif; ?>
 
+<?php if ($totalFile): ?>
+<details class="simpan" <?= $pratinjau ? 'open' : '' ?>>
+    <summary>
+        <span>🧹</span>
+        <span style="flex:1;">Kelola penyimpanan — hapus laporan lama sekaligus</span>
+        <span style="color:var(--redup);font-size:12px;font-weight:normal;">Total terpakai: <?= formatBytes($totalUkuran) ?></span>
+    </summary>
+
+    <div class="isi-panel">
+        <form method="get" class="baris-form">
+            <div>
+                <label class="kecil" for="sebelum">Hapus laporan dengan periode sebelum</label>
+                <input id="sebelum" name="sebelum" type="month" required
+                       value="<?= htmlspecialchars($praSebelum) ?>">
+            </div>
+
+            <div>
+                <label class="kecil" for="tpl">Batasi ke template</label>
+                <select id="tpl" name="tpl">
+                    <option value="">Semua template</option>
+                    <?php foreach ($labelTemplate as $k => $label): ?>
+                        <option value="<?= htmlspecialchars($k) ?>" <?= $k === $praTemplate ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($label) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <button class="btn-abu" type="submit">Lihat yang akan dihapus</button>
+        </form>
+
+        <?php if ($pratinjau !== null): ?>
+            <?php if ($pratinjau['jumlah'] === 0): ?>
+                <div class="pratinjau">
+                    Tidak ada berkas dengan periode sebelum <b><?= htmlspecialchars($pratinjau['sebelum']) ?></b>
+                    <?= $pratinjau['template'] === '' ? '' : ' pada template <b>' . htmlspecialchars($labelTemplate[$pratinjau['template']]) . '</b>' ?>.
+                </div>
+            <?php else: ?>
+                <div class="pratinjau">
+                    <b><?= $pratinjau['jumlah'] ?> berkas</b> akan dihapus,
+                    membebaskan <b><?= formatBytes($pratinjau['ukuran']) ?></b>.
+                    Rekap SLA-nya <b>tidak</b> ikut terhapus — riwayat uptime tetap bisa dibaca di halaman Rekap SLA.
+
+                    <ul>
+                        <?php foreach ($pratinjau['contoh'] as $c): ?>
+                            <li><?= htmlspecialchars($c) ?></li>
+                        <?php endforeach; ?>
+                        <?php if ($pratinjau['jumlah'] > count($pratinjau['contoh'])): ?>
+                            <li>… dan <?= $pratinjau['jumlah'] - count($pratinjau['contoh']) ?> berkas lainnya</li>
+                        <?php endif; ?>
+                    </ul>
+                </div>
+
+                <form method="post" style="margin-top:14px;"
+                      onsubmit="return confirm('Hapus <?= $pratinjau['jumlah'] ?> berkas (<?= formatBytes($pratinjau['ukuran']) ?>)? Tindakan ini tidak bisa dibatalkan.');">
+                    <input type="hidden" name="aksi" value="hapus_periode">
+                    <input type="hidden" name="sebelum" value="<?= htmlspecialchars($pratinjau['sebelum'], ENT_QUOTES) ?>">
+                    <input type="hidden" name="template" value="<?= htmlspecialchars($pratinjau['template'], ENT_QUOTES) ?>">
+                    <button class="btn-merah" type="submit">
+                        Hapus <?= $pratinjau['jumlah'] ?> berkas sekarang
+                    </button>
+                    <a class="btn-abu" href="hasil.php" style="margin-left:8px;">Batal</a>
+                </form>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+</details>
+<?php endif; ?>
+
 <div class="kotak">
     <?php if (!$pohon): ?>
         <div class="kosong">Belum ada laporan yang dihasilkan.</div>
@@ -361,6 +634,17 @@ $err = $_GET['err'] ?? '';
                                onclick="event.stopPropagation()" title="Unduh seluruh cabang ini sebagai ZIP">⬇ ZIP</a>
                         <?php endif; ?>
                     </summary>
+
+                    <?php if ($t['path'] !== ''): ?>
+                        <div class="toolbar" style="padding-left:40px;">
+                            <form method="post" class="inline"
+                                  onsubmit="return confirm('HAPUS SELURUH CABANG INI?\n\nTemplate: <?= htmlspecialchars(addslashes($t['label'])) ?>\n<?= count($t['anak']) ?> pelanggan, <?= $t['jumlah'] ?> berkas, <?= htmlspecialchars($t['ukuran']) ?>\n\nRekap SLA tidak ikut terhapus. Tindakan ini tidak bisa dibatalkan.');">
+                                <input type="hidden" name="aksi" value="hapus_cabang">
+                                <input type="hidden" name="path" value="<?= htmlspecialchars($t['path'], ENT_QUOTES) ?>">
+                                <button type="submit" class="btn-hapus-folder"><?= $ikonHapus ?>Hapus seluruh cabang ini (<?= $t['jumlah'] ?> berkas · <?= htmlspecialchars($t['ukuran']) ?>)</button>
+                            </form>
+                        </div>
+                    <?php endif; ?>
 
                     <?php foreach ($t['anak'] as $p): ?>
                         <details class="pel" data-cari="<?= htmlspecialchars($p['cari'], ENT_QUOTES) ?>">
@@ -390,6 +674,18 @@ $err = $_GET['err'] ?? '';
                                         <span class="nm">Tahun <?= htmlspecialchars($th['tahun']) ?></span>
                                         <span class="jm"><?= $th['jumlah'] ?> berkas · <?= htmlspecialchars($th['ukuran']) ?></span>
                                     </summary>
+
+                                    <?php if (ctype_digit((string) $th['tahun'])): ?>
+                                        <div class="toolbar" style="padding-left:88px;">
+                                            <form method="post" class="inline"
+                                                  onsubmit="return confirm('Hapus <?= $th['jumlah'] ?> berkas tahun <?= htmlspecialchars($th['tahun']) ?> milik pelanggan ini (<?= htmlspecialchars($th['ukuran']) ?>)?');">
+                                                <input type="hidden" name="aksi" value="hapus_tahun">
+                                                <input type="hidden" name="path" value="<?= htmlspecialchars($p['path'], ENT_QUOTES) ?>">
+                                                <input type="hidden" name="tahun" value="<?= htmlspecialchars($th['tahun'], ENT_QUOTES) ?>">
+                                                <button type="submit" class="btn-hapus-folder"><?= $ikonHapus ?>Hapus tahun <?= htmlspecialchars($th['tahun']) ?></button>
+                                            </form>
+                                        </div>
+                                    <?php endif; ?>
 
                                     <?php foreach ($th['files'] as $f): ?>
                                         <div class="file">
