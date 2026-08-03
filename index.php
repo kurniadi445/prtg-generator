@@ -193,27 +193,27 @@ foreach ($pelanggan as $p) {
             background: #e2e6ec;
         }
 
-        /* Daftar pelanggan dibuat berkolom otomatis: satu kolom di layar sempit,
-           dua atau tiga di layar lebar. Jauh lebih sedikit menggulir. */
+        /* Satu pelanggan satu baris, menurun ke bawah. Lebar penuh dipakai
+           untuk memberi ruang nama panjang, bukan untuk memecah jadi kolom. */
         .daftar {
             border: 1px solid var(--garis);
             border-radius: 8px;
-            display: grid;
-            gap: 0;
-            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
             max-height: 60vh;
             min-height: 200px;
             overflow-y: auto;
-            padding: 4px;
         }
 
         .item {
             align-items: center;
-            border-radius: 6px;
+            border-bottom: 1px solid #eef0f3;
             cursor: pointer;
             display: flex;
-            gap: 10px;
-            padding: 8px 10px;
+            gap: 12px;
+            padding: 10px 14px;
+        }
+
+        .item:last-of-type {
+            border-bottom: 0;
         }
 
         .item:hover {
@@ -262,7 +262,6 @@ foreach ($pelanggan as $p) {
         .kosong {
             color: var(--redup);
             display: none;
-            grid-column: 1 / -1;
             padding: 16px;
             text-align: center;
         }
