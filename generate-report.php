@@ -7,6 +7,22 @@
  *   prtg.php          - login, ambil data, parse downtime
  *   report-blocks.php - blok dokumen yang dipakai bersama template
  *   templates/*.php   - tata letak per template
+ *   sla-store.php     - pencatatan rekap SLA ke database
+ *
+ * PERUBAHAN dari versi sebelumnya:
+ *
+ *   1. Berkas hasil kini disimpan di
+ *          jobs/<template>/<PELANGGAN>/<YYYY-MM> - <PELANGGAN>.docx
+ *      Sebelumnya template tidak ikut dalam path, sehingga laporan ICM dan
+ *      IDT untuk pelanggan dan bulan yang sama saling menimpa tanpa peringatan.
+ *
+ *   2. Bila config('report')['mode_tulis'] diisi 'versi', berkas lama tidak
+ *      ditimpa melainkan disimpan sebagai "... (2).docx", "... (3).docx", dst.
+ *
+ *   3. Setiap laporan yang selesai dicatat ke tabel sla_bulanan + sla_downtime.
+ *
+ *   4. generateReport() kini mengembalikan PATH RELATIF, bukan nama berkas saja.
+ *      worker.php dan status.php ikut disesuaikan.
  */
 
 require 'vendor/autoload.php';
@@ -15,6 +31,7 @@ require_once 'database.php';
 require_once 'helpers.php';
 require_once 'prtg.php';
 require_once 'report-blocks.php';
+require_once 'sla-store.php';
 
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
@@ -83,6 +100,13 @@ function konfigurasiPelanggan(string $idPelanggan): array
         throw new RuntimeException("Template '$template' tidak terdaftar di config('templates')");
     }
 
+    // Template ikut menjadi nama folder, jadi karakternya dibatasi ketat.
+    if (!preg_match('/^[A-Za-z0-9_-]+$/', $template)) {
+        throw new RuntimeException(
+            "Kunci template '$template' mengandung karakter yang tidak boleh dipakai sebagai nama folder"
+        );
+    }
+
     $opsi = $daftar[$template];
 
     return [
@@ -96,8 +120,41 @@ function konfigurasiPelanggan(string $idPelanggan): array
 }
 
 /**
+ * Tentukan path tujuan penyimpanan dokumen.
+ *
+ * mode 'timpa' (bawaan) : berkas dengan nama sama ditimpa
+ * mode 'versi'          : berkas lama dipertahankan, yang baru diberi akhiran (2), (3), ...
+ */
+function pathDokumen(string $template, string $namaAman, string $kodeBulan, string $mode): string
+{
+    $folder = 'jobs/' . $template . '/' . $namaAman;
+
+    if (!is_dir($folder)) {
+        mkdir($folder, 0777, true);
+    }
+
+    $dasar = strtoupper($kodeBulan) . ' - ' . $namaAman;
+    $path  = $folder . '/' . $dasar . '.docx';
+
+    if ($mode !== 'versi' || !is_file($path)) {
+        return $path;
+    }
+
+    for ($n = 2; $n < 1000; $n++) {
+        $kandidat = $folder . '/' . $dasar . ' (' . $n . ').docx';
+
+        if (!is_file($kandidat)) {
+            return $kandidat;
+        }
+    }
+
+    throw new RuntimeException('Terlalu banyak versi untuk ' . $dasar);
+}
+
+/**
  * Ambil data satu bulan dari PRTG lalu kembalikan bahan mentah laporan:
- * path PNG hasil potret dan rekap downtime per jam.
+ * path PNG hasil potret, rekap downtime per jam, daftar downtime mentah,
+ * dan ringkasan trafik.
  *
  * $sementara diisi dengan daftar berkas sementara yang dibuat, agar
  * pemanggil bisa membersihkannya walau terjadi error.
@@ -139,14 +196,21 @@ function ambilDataPrtg(array $prtg, array $laporan, string $idSensor, string $bu
 
     $sementara[] = $pngFile;
 
+    // Daftar downtime SELALU diambil, walau tabelnya tidak dicetak di Word.
+    // Opsi 'rekap_downtime' pada job hanya mengatur isi dokumen, bukan
+    // apa yang dicatat ke database.
+    $episode = prtgDowntimeMentah($xpath);
+
     return [
         'gambar'   => $pngFile,
-        'downtime' => $includeDowntime ? prtgDowntimePerJam($xpath) : [],
+        'episode'  => $episode,
+        'downtime' => $includeDowntime ? prtgDowntimeKeEmberJam($episode) : [],
+        'trafik'   => prtgRingkasanTrafik($prtg, $idSensor, $mulai, $akhir, $cookie),
     ];
 }
 
 /**
- * Buat laporan untuk rentang bulan (inklusif) lalu kembalikan daftar berkas.
+ * Buat laporan untuk rentang bulan (inklusif) lalu kembalikan daftar path relatif.
  */
 function generateReportRange($dari, $sampai, $idPelanggan, $jobId, $includeDowntime)
 {
@@ -165,7 +229,9 @@ function generateReportRange($dari, $sampai, $idPelanggan, $jobId, $includeDownt
 }
 
 /**
- * Buat laporan satu bulan. Mengembalikan nama berkas .docx yang dihasilkan.
+ * Buat laporan satu bulan.
+ *
+ * @return string path relatif dokumen, mis. 'jobs/idt/PT ABC/2026-07 - PT ABC.docx'
  */
 function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
 {
@@ -215,16 +281,31 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
         ]);
 
         $namaAman = sanitizeFolderName($pelanggan['nama']);
-        $namaFile = strtoupper($kodeBulan) . ' - ' . $namaAman . '.docx';
-        $folder   = 'jobs/' . $namaAman;
 
-        if (!is_dir($folder)) {
-            mkdir($folder, 0777, true);
-        }
+        $path = pathDokumen(
+            $pelanggan['template'],
+            $namaAman,
+            $kodeBulan,
+            $pelanggan['report']['mode_tulis'] ?? 'timpa'
+        );
 
-        IOFactory::createWriter($dokumen, 'Word2007')->save($folder . '/' . $namaFile);
+        IOFactory::createWriter($dokumen, 'Word2007')->save($path);
 
-        return $namaFile;
+        // Catat rekap SLA. Fungsi ini tidak pernah melempar exception,
+        // jadi kegagalan database tidak membatalkan dokumen yang sudah jadi.
+        slaSimpan([
+            'pelanggan_id'   => (string) $idPelanggan,
+            'nama_pelanggan' => $pelanggan['nama'],
+            'template'       => $pelanggan['template'],
+            'periode'        => $bulan,
+            'detik_periode'  => (int) date('t', $waktu) * 86400,
+            'episode'        => $data['episode'],
+            'trafik'         => $data['trafik'],
+            'file_docx'      => $path,
+            'job_id'         => $jobId,
+        ]);
+
+        return $path;
     } finally {
         // Dibersihkan juga saat terjadi error, supaya tmp/ tidak menumpuk.
         foreach ($sementara as $berkas) {

@@ -58,6 +58,22 @@ return [
         // Template yang dipakai bila kolom `pelanggan`.`template` kosong.
         // Harus sama dengan DEFAULT kolom tersebut di database.
         'default_template' => 'idt',
+
+        // Apa yang dilakukan bila berkas dengan nama sama sudah ada.
+        //
+        //   'timpa'  berkas lama ditimpa (perilaku lama)
+        //   'versi'  berkas lama dipertahankan, yang baru diberi akhiran
+        //            " (2)", " (3)", dst.
+        //
+        // Sejak folder hasil dipisah per template
+        // (jobs/<template>/<pelanggan>/), laporan ICM dan IDT untuk pelanggan
+        // dan bulan yang sama TIDAK lagi saling menimpa walau nilainya 'timpa'.
+        // Opsi ini hanya soal generate ulang template yang sama.
+        'mode_tulis' => 'timpa',
+
+        // Ambang SLA (Service Level Agreement) dalam persen, dipakai halaman
+        // sla.php untuk mewarnai sel yang di bawah target.
+        'sla_target' => 99.5,
     ],
 
     // ---------------------------------------------------------------------

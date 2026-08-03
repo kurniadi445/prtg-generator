@@ -104,6 +104,103 @@ function formatDurasi(int $detik): string
 }
 
 /**
+ * Ubah path relatif di dalam jobs/ menjadi path fisik yang sudah divalidasi.
+ *
+ * Dipakai bersama oleh hasil.php dan unduh.php sejak folder hasil menjadi
+ * bertingkat (jobs/<template>/<pelanggan>/). basename() saja tidak lagi cukup
+ * untuk mencegah path traversal karena path-nya kini memang punya beberapa segmen.
+ *
+ * @return string|false path absolut, atau false bila tidak valid / tidak ada.
+ */
+function jobsPathAman(string $relatif)
+{
+    $root = realpath('jobs');
+
+    if ($root === false) {
+        return false;
+    }
+
+    $relatif = trim(str_replace('\\', '/', $relatif), '/');
+
+    if ($relatif === '') {
+        return $root;
+    }
+
+    foreach (explode('/', $relatif) as $segmen) {
+        if ($segmen === '' || $segmen === '.' || $segmen === '..') {
+            return false;
+        }
+    }
+
+    $target = realpath($root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relatif));
+
+    if ($target === false) {
+        return false;
+    }
+
+    if (strncmp($target, $root . DIRECTORY_SEPARATOR, strlen($root) + 1) !== 0) {
+        return false;
+    }
+
+    return $target;
+}
+
+/**
+ * Kumpulkan seluruh berkas .docx di dalam sebuah folder, termasuk subfolder.
+ *
+ * @return array [path fisik => path relatif terhadap $dasar]
+ */
+function kumpulkanDocx(string $dirFisik, string $dasar = ''): array
+{
+    $hasil = [];
+
+    foreach (scandir($dirFisik) ?: [] as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $anak    = $dirFisik . DIRECTORY_SEPARATOR . $item;
+        $relatif = $dasar === '' ? $item : $dasar . '/' . $item;
+
+        if (is_dir($anak)) {
+            $hasil += kumpulkanDocx($anak, $relatif);
+        } elseif (strtolower(pathinfo($item, PATHINFO_EXTENSION)) === 'docx') {
+            $hasil[$anak] = $relatif;
+        }
+    }
+
+    return $hasil;
+}
+
+/**
+ * Hapus folder beserta isinya. Hanya .docx yang dihapus sebagai berkas;
+ * jenis lain sengaja dibiarkan agar tidak ada yang terhapus tak sengaja.
+ *
+ * @return int jumlah berkas yang berhasil dihapus
+ */
+function hapusFolderDocx(string $dirFisik): int
+{
+    $jumlah = 0;
+
+    foreach (scandir($dirFisik) ?: [] as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $anak = $dirFisik . DIRECTORY_SEPARATOR . $item;
+
+        if (is_dir($anak)) {
+            $jumlah += hapusFolderDocx($anak);
+            @rmdir($anak);
+        } elseif (strtolower(pathinfo($item, PATHINFO_EXTENSION)) === 'docx' && @unlink($anak)) {
+            $jumlah++;
+        }
+    }
+
+    return $jumlah;
+}
+
+/**
  * Daftar template yang terpasang: kunci => label, untuk dipakai di dropdown.
  */
 function daftarTemplate(): array

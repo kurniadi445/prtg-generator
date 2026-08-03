@@ -35,14 +35,16 @@ if (($_GET['format'] ?? '') === 'json') {
 // Kumpulkan file hasil (bila ada).
 $files = [];
 if ($job) {
-    $qf = $bd->prepare('SELECT filename, created_at FROM job_files WHERE job_id = ? ORDER BY filename');
+    $qf = $bd->prepare('SELECT filename, path, created_at FROM job_files WHERE job_id = ? ORDER BY filename');
     $qf->execute([$id]);
     $rows = $qf->fetchAll(PDO::FETCH_ASSOC);
 
-    $folder = 'jobs/' . sanitizeFolderName($job['pelanggan_nama'] ?? '');
+    // Struktur folder lama (sebelum penataan per template) tidak punya kolom
+    // `path`, jadi path-nya masih disusun dengan cara lama sebagai cadangan.
+    $folderLama = 'jobs/' . sanitizeFolderName($job['pelanggan_nama'] ?? '');
 
     foreach ($rows as $r) {
-        $path = $folder . '/' . $r['filename'];
+        $path = !empty($r['path']) ? $r['path'] : $folderLama . '/' . $r['filename'];
         $ada  = is_file($path);
         $files[] = [
             'filename' => $r['filename'],

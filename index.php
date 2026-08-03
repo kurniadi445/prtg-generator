@@ -34,6 +34,11 @@ foreach ($pelanggan as $p) {
             --garis: #d9dde3;
             --abu: #f4f4f9;
             --teks: #2b2f36;
+            --redup: #8a909a;
+
+            /* Lebar isi halaman. Disamakan dengan hasil.php dan sla.php
+               supaya berpindah antar-halaman tidak terasa "melompat". */
+            --lebar: 1240px;
         }
 
         * {
@@ -48,29 +53,53 @@ foreach ($pelanggan as $p) {
             padding: 24px 16px;
         }
 
+        .wadah {
+            margin: 0 auto;
+            max-width: var(--lebar);
+        }
+
+        .bar {
+            align-items: baseline;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            justify-content: space-between;
+            margin-bottom: 18px;
+        }
+
+        .bar h2 {
+            margin: 0;
+        }
+
+        a.nav {
+            color: var(--biru);
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        a.nav:hover {
+            text-decoration: underline;
+        }
+
         .kartu {
             background: #fff;
             border: 1px solid var(--garis);
             border-radius: 10px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
-            margin: 0 auto 20px;
-            max-width: 640px;
-            padding: 20px 22px;
+            margin-bottom: 20px;
+            padding: 18px 20px;
         }
 
-        h2 {
-            margin: 0 auto 18px;
-            max-width: 640px;
-        }
-
+        /* --- Baris periode: tanggal dan opsi berjajar dalam satu baris --- */
         .baris {
+            align-items: flex-end;
             display: flex;
             flex-wrap: wrap;
-            gap: 16px;
+            gap: 18px;
         }
 
         .kolom {
-            flex: 1 1 180px;
+            flex: 0 1 240px;
         }
 
         label.field {
@@ -92,15 +121,16 @@ foreach ($pelanggan as $p) {
             align-items: center;
             display: flex;
             gap: 8px;
-            margin-top: 16px;
+            padding-bottom: 9px;
         }
 
         /* --- Panel checklist pelanggan --- */
         .panel-head {
             align-items: center;
             display: flex;
+            gap: 12px;
             justify-content: space-between;
-            margin-bottom: 10px;
+            margin-bottom: 14px;
         }
 
         .panel-head h3 {
@@ -117,19 +147,36 @@ foreach ($pelanggan as $p) {
             white-space: nowrap;
         }
 
+        /* Cari, penyaring template, dan tombol pilih semua jadi satu baris,
+           karena sekarang lebarnya memang cukup. */
+        .alat {
+            align-items: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
         #cari {
             border: 1px solid var(--garis);
             border-radius: 6px;
+            flex: 1 1 280px;
             font-size: 14px;
-            margin-bottom: 10px;
             padding: 9px 12px;
-            width: 100%;
         }
 
-        .aksi {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
+        .alat label {
+            color: var(--redup);
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .alat select {
+            background: #fff;
+            border: 1px solid var(--garis);
+            border-radius: 6px;
+            font-size: 14px;
+            padding: 8px 10px;
         }
 
         .tombol-kecil {
@@ -138,50 +185,66 @@ foreach ($pelanggan as $p) {
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
-            padding: 6px 12px;
+            padding: 8px 12px;
+            white-space: nowrap;
         }
 
         .tombol-kecil:hover {
             background: #e2e6ec;
         }
 
+        /* Daftar pelanggan dibuat berkolom otomatis: satu kolom di layar sempit,
+           dua atau tiga di layar lebar. Jauh lebih sedikit menggulir. */
         .daftar {
             border: 1px solid var(--garis);
             border-radius: 8px;
-            max-height: 340px;
+            display: grid;
+            gap: 0;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            max-height: 60vh;
+            min-height: 200px;
             overflow-y: auto;
+            padding: 4px;
         }
 
         .item {
             align-items: center;
-            border-bottom: 1px solid #eef0f3;
+            border-radius: 6px;
             cursor: pointer;
             display: flex;
             gap: 10px;
-            padding: 9px 12px;
-        }
-
-        .item:last-child {
-            border-bottom: 0;
+            padding: 8px 10px;
         }
 
         .item:hover {
             background: #f7f9fc;
         }
 
+        /* Baris terpilih diberi penanda supaya mudah dilihat di antara 68 baris. */
+        .item:has(input:checked) {
+            background: #eaf3fd;
+        }
+
         .item input {
+            flex: none;
             height: 16px;
             width: 16px;
         }
 
         .item .id {
-            color: #8a909a;
+            color: var(--redup);
+            flex: none;
             font-size: 12px;
             min-width: 48px;
         }
 
         .item .nama {
+            flex: 1;
             font-size: 14px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         /* Label template di ujung kanan tiap baris */
@@ -190,38 +253,34 @@ foreach ($pelanggan as $p) {
             border: 1px solid var(--garis);
             border-radius: 999px;
             color: #5b616b;
+            flex: none;
             font-size: 11px;
-            margin-left: auto;
             padding: 2px 9px;
             white-space: nowrap;
         }
 
-        .saring {
-            align-items: center;
-            display: flex;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-
-        .saring label {
-            color: #8a909a;
-            font-size: 13px;
-            white-space: nowrap;
-        }
-
-        .saring select {
-            background: #fff;
-            border: 1px solid var(--garis);
-            border-radius: 6px;
-            font-size: 14px;
-            padding: 8px 10px;
-        }
-
         .kosong {
-            color: #8a909a;
+            color: var(--redup);
             display: none;
+            grid-column: 1 / -1;
             padding: 16px;
             text-align: center;
+        }
+
+        /* Tombol kirim tidak lagi selebar layar — pada lebar 1240px itu
+           terlihat janggal. Diletakkan di kanan bersama ringkasan pilihan. */
+        .kaki {
+            align-items: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            justify-content: space-between;
+            margin-top: 16px;
+        }
+
+        .kaki .ringkas {
+            color: var(--redup);
+            font-size: 13px;
         }
 
         button[type=submit] {
@@ -232,93 +291,106 @@ foreach ($pelanggan as $p) {
             cursor: pointer;
             font-size: 15px;
             font-weight: bold;
-            margin-top: 18px;
-            padding: 12px 20px;
-            width: 100%;
+            padding: 12px 32px;
         }
 
         button[type=submit]:hover {
             background: var(--biru-tua);
         }
+
+        @media (max-width: 640px) {
+            .kolom {
+                flex: 1 1 100%;
+            }
+
+            button[type=submit] {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
-<div style="align-items:baseline;display:flex;justify-content:space-between;margin:0 auto 18px;max-width:640px;">
-    <h2 style="margin:0;">Data Historis PRTG Generator</h2>
-    <span>
-        <a href="antrean.php" style="color:#007bff;font-size:14px;text-decoration:none;">Antrean</a>
-        &nbsp;·&nbsp;
-        <a href="hasil.php" style="color:#007bff;font-size:14px;text-decoration:none;">Hasil Laporan</a>
-        &nbsp;·&nbsp;
-        <a href="pelanggan.php" style="color:#007bff;font-size:14px;text-decoration:none;">Kelola Pelanggan</a>
-    </span>
-</div>
+<div class="wadah">
 
-<form action="create-job.php" method="post" id="form-job">
-    <div class="kartu">
-        <div class="baris">
-            <div class="kolom">
-                <label class="field" for="dari">Dari</label>
-                <input id="dari" name="dari" type="month" required>
-            </div>
-            <div class="kolom">
-                <label class="field" for="sampai">Sampai</label>
-                <input id="sampai" name="sampai" type="month" required>
-            </div>
-        </div>
-        <label class="cek-opsi">
-            <input type="checkbox" name="rekap_downtime" value="1" checked>
-            Sertakan Rekap Log Downtime
-        </label>
+    <div class="bar">
+        <h2>Data Historis PRTG Generator</h2>
+        <span>
+            <a class="nav" href="antrean.php">Antrean</a>
+            &nbsp;·&nbsp;
+            <a class="nav" href="hasil.php">Hasil Laporan</a>
+            &nbsp;·&nbsp;
+            <a class="nav" href="sla.php">Rekap SLA</a>
+            &nbsp;·&nbsp;
+            <a class="nav" href="pelanggan.php">Kelola Pelanggan</a>
+        </span>
     </div>
 
-    <div class="kartu">
-        <div class="panel-head">
-            <h3>Pelanggan</h3>
-            <span class="badge"><span id="jml-terpilih">0</span> / <?= count($pelanggan) ?> dipilih</span>
-        </div>
-
-        <input id="cari" type="text" placeholder="🔍 Cari nama, ID, atau template..." autocomplete="off">
-
-        <div class="saring">
-            <label for="saring-tpl">Template:</label>
-            <select id="saring-tpl">
-                <option value="">Semua (<?= count($pelanggan) ?>)</option>
-                <?php foreach ($daftarTpl as $kunci => $label): ?>
-                    <option value="<?= htmlspecialchars($kunci, ENT_QUOTES) ?>">
-                        <?= htmlspecialchars($label) ?> (<?= $jumlahTpl[$kunci] ?? 0 ?>)
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <div class="aksi">
-            <button type="button" class="tombol-kecil" id="pilih-semua">Pilih semua</button>
-            <button type="button" class="tombol-kecil" id="hapus-semua">Hapus semua</button>
-        </div>
-
-        <div class="daftar" id="daftar">
-            <?php foreach ($pelanggan as $p):
-                // Template yang tidak lagi terdaftar tetap ditampilkan apa adanya
-                // agar sisa data lama gampang ditemukan.
-                $tplKunci = $p['template'] ?: $templateAwal;
-                $tplLabel = $daftarTpl[$tplKunci] ?? ($tplKunci . ' (tidak terdaftar)');
-                ?>
-                <label class="item"
-                       data-tpl="<?= htmlspecialchars($tplKunci, ENT_QUOTES) ?>"
-                       data-cari="<?= htmlspecialchars(strtolower($p['id'] . ' ' . $p['nama'] . ' ' . $tplLabel), ENT_QUOTES) ?>">
-                    <input type="checkbox" name="pelanggan[]" value="<?= htmlspecialchars($p['id'], ENT_QUOTES) ?>">
-                    <span class="id"><?= htmlspecialchars($p['id']) ?></span>
-                    <span class="nama"><?= htmlspecialchars($p['nama']) ?></span>
-                    <span class="tpl"><?= htmlspecialchars($tplLabel) ?></span>
+    <form action="create-job.php" method="post" id="form-job">
+        <div class="kartu">
+            <div class="baris">
+                <div class="kolom">
+                    <label class="field" for="dari">Dari</label>
+                    <input id="dari" name="dari" type="month" required>
+                </div>
+                <div class="kolom">
+                    <label class="field" for="sampai">Sampai</label>
+                    <input id="sampai" name="sampai" type="month" required>
+                </div>
+                <label class="cek-opsi">
+                    <input type="checkbox" name="rekap_downtime" value="1" checked>
+                    Sertakan Rekap Log Downtime
                 </label>
-            <?php endforeach; ?>
-            <div class="kosong" id="kosong">Tidak ada pelanggan yang cocok.</div>
+            </div>
         </div>
 
-        <button type="submit">Buat Laporan</button>
-    </div>
-</form>
+        <div class="kartu">
+            <div class="panel-head">
+                <h3>Pelanggan</h3>
+                <span class="badge"><span id="jml-terpilih">0</span> / <?= count($pelanggan) ?> dipilih</span>
+            </div>
+
+            <div class="alat">
+                <input id="cari" type="text" placeholder="🔍 Cari nama, ID, atau template..." autocomplete="off">
+
+                <label for="saring-tpl">Template:</label>
+                <select id="saring-tpl">
+                    <option value="">Semua (<?= count($pelanggan) ?>)</option>
+                    <?php foreach ($daftarTpl as $kunci => $label): ?>
+                        <option value="<?= htmlspecialchars($kunci, ENT_QUOTES) ?>">
+                            <?= htmlspecialchars($label) ?> (<?= $jumlahTpl[$kunci] ?? 0 ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <button type="button" class="tombol-kecil" id="pilih-semua">Pilih semua</button>
+                <button type="button" class="tombol-kecil" id="hapus-semua">Hapus semua</button>
+            </div>
+
+            <div class="daftar" id="daftar">
+                <?php foreach ($pelanggan as $p):
+                    // Template yang tidak lagi terdaftar tetap ditampilkan apa adanya
+                    // agar sisa data lama gampang ditemukan.
+                    $tplKunci = $p['template'] ?: $templateAwal;
+                    $tplLabel = $daftarTpl[$tplKunci] ?? ($tplKunci . ' (tidak terdaftar)');
+                    ?>
+                    <label class="item"
+                           data-tpl="<?= htmlspecialchars($tplKunci, ENT_QUOTES) ?>"
+                           data-cari="<?= htmlspecialchars(strtolower($p['id'] . ' ' . $p['nama'] . ' ' . $tplLabel), ENT_QUOTES) ?>">
+                        <input type="checkbox" name="pelanggan[]" value="<?= htmlspecialchars($p['id'], ENT_QUOTES) ?>">
+                        <span class="id"><?= htmlspecialchars($p['id']) ?></span>
+                        <span class="nama" title="<?= htmlspecialchars($p['nama'], ENT_QUOTES) ?>"><?= htmlspecialchars($p['nama']) ?></span>
+                        <span class="tpl"><?= htmlspecialchars($tplLabel) ?></span>
+                    </label>
+                <?php endforeach; ?>
+                <div class="kosong" id="kosong">Tidak ada pelanggan yang cocok.</div>
+            </div>
+
+            <div class="kaki">
+                <span class="ringkas" id="ringkas-saring"></span>
+                <button type="submit">Buat Laporan</button>
+            </div>
+        </div>
+    </form>
 
 <script>
     'use strict';
@@ -329,6 +401,7 @@ foreach ($pelanggan as $p) {
     const cari = document.getElementById('cari');
     const jml = document.getElementById('jml-terpilih');
     const kosong = document.getElementById('kosong');
+    const ringkas = document.getElementById('ringkas-saring');
 
     function perbaruiJumlah() {
         jml.textContent = kotak.filter(c => c.checked).length;
@@ -356,6 +429,12 @@ foreach ($pelanggan as $p) {
         });
 
         kosong.style.display = ada === 0 ? 'block' : 'none';
+
+        // Beri tahu berapa yang sedang tampil, supaya jelas bahwa "Pilih semua"
+        // hanya mengenai baris yang lolos penyaring.
+        ringkas.textContent = (q === '' && tpl === '')
+            ? items.length + ' pelanggan'
+            : ada + ' dari ' + items.length + ' pelanggan tampil';
     }
 
     cari.addEventListener('input', saring);
@@ -399,6 +478,9 @@ foreach ($pelanggan as $p) {
     });
 
     perbaruiJumlah();
+    saring();
 </script>
+
+</div>
 </body>
 </html>

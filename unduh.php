@@ -3,11 +3,15 @@
 /**
  * Unduh hasil laporan sebagai ZIP.
  *
- *   unduh.php                     -> seluruh isi jobs/ (berstruktur folder)
- *   unduh.php?folder=PT%20ABC     -> satu folder pelanggan saja (isi rata)
+ *   unduh.php                        -> seluruh isi jobs/ (struktur folder dipertahankan)
+ *   unduh.php?path=idt               -> seluruh cabang satu template
+ *   unduh.php?path=idt/PT%20ABC      -> satu folder pelanggan
+ *   unduh.php?folder=PT%20ABC        -> bentuk lama, masih didukung (arsip lama)
  *
  * Menggantikan unduh-folder.php; berkas lama itu boleh dihapus.
  */
+
+require_once 'helpers.php';
 
 $gagal = function (int $kode, string $pesan): void {
     http_response_code($kode);
@@ -16,59 +20,35 @@ $gagal = function (int $kode, string $pesan): void {
     exit;
 };
 
-$rootReal = realpath('jobs');
-
-if ($rootReal === false) {
+if (realpath('jobs') === false) {
     $gagal(404, 'Folder jobs/ tidak ditemukan.');
 }
 
-/**
- * Pastikan sebuah path benar-benar berada di dalam jobs/.
- */
-$diDalamRoot = function (string $path) use ($rootReal): bool {
-    return strncmp($path, $rootReal . DIRECTORY_SEPARATOR, strlen($rootReal) + 1) === 0;
-};
-
-$folder = isset($_GET['folder']) ? basename($_GET['folder']) : '';
+// Parameter lama `folder` diterjemahkan ke `path` agar tautan lama tetap hidup.
+$rel = (string) ($_GET['path'] ?? $_GET['folder'] ?? '');
 
 // ---------------------------------------------------------------------
-// Kumpulkan daftar file: [path fisik => nama di dalam ZIP]
+// Kumpulkan daftar berkas: [path fisik => nama di dalam ZIP]
 // ---------------------------------------------------------------------
-$isi = [];
+if ($rel === '') {
+    $dirFisik = realpath('jobs');
+    $namaZip  = 'laporan-' . date('Y-m-d') . '.zip';
+} else {
+    $dirFisik = jobsPathAman($rel);
 
-if ($folder !== '') {
-    // --- Satu folder pelanggan ---
-    if ($folder === '.' || $folder === '..') {
-        $gagal(400, 'Nama folder tidak valid.');
-    }
-
-    $dirReal = realpath('jobs/' . $folder);
-
-    if ($dirReal === false || !is_dir($dirReal) || !$diDalamRoot($dirReal)) {
+    if ($dirFisik === false || !is_dir($dirFisik)) {
         $gagal(404, 'Folder tidak ditemukan.');
     }
 
-    foreach (glob($dirReal . '/*.docx') ?: [] as $path) {
-        $isi[$path] = basename($path);
-    }
-
-    $namaZip = $folder . '.zip';
-} else {
-    // --- Seluruh hasil, struktur folder dipertahankan ---
-    // Path relatif dipakai di sini supaya pemisah direktorinya konsisten.
-    // Mencampur hasil realpath() (backslash di Windows) dengan pola '/'
-    // membuat perbandingan path selalu gagal.
-    foreach (glob('jobs/*', GLOB_ONLYDIR) ?: [] as $dir) {
-        foreach (glob($dir . '/*.docx') ?: [] as $path) {
-            $isi[$path] = basename($dir) . '/' . basename($path);
-        }
-    }
-
-    $namaZip = 'laporan-' . date('Y-m-d') . '.zip';
+    // Nama ZIP memakai seluruh segmen path supaya berkas hasil unduhan
+    // tidak tertukar antar template, mis. "idt - PT ABC.zip".
+    $namaZip = str_replace('/', ' - ', trim(str_replace('\\', '/', $rel), '/')) . '.zip';
 }
 
+$isi = kumpulkanDocx($dirFisik);
+
 if (!$isi) {
-    $gagal(404, 'Tidak ada file untuk diunduh.');
+    $gagal(404, 'Tidak ada berkas untuk diunduh.');
 }
 
 // Arsip besar butuh waktu; jangan diputus batas eksekusi bawaan.

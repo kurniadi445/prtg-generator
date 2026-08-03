@@ -130,9 +130,12 @@ while (true) {
             $job['rekap_downtime']
         );
 
+        // generateReport kini mengembalikan PATH RELATIF (jobs/<template>/...),
+        // bukan nama berkas saja. Keduanya disimpan: `filename` supaya kode
+        // lama tetap jalan, `path` supaya tautan unduh selalu tepat.
         foreach ($files as $file) {
-            $bd->prepare('INSERT INTO job_files (job_id, filename) VALUES (?, ?)')
-                ->execute([$job['id'], $file]);
+            $bd->prepare('INSERT INTO job_files (job_id, filename, path) VALUES (?, ?, ?)')
+                ->execute([$job['id'], basename($file), $file]);
         }
 
         $bd->prepare("UPDATE jobs SET status = 'done', finished_at = NOW() WHERE id = ?")
