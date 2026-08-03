@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Waktu pembuatan: 02 Agu 2026 pada 13.12
+-- Waktu pembuatan: 03 Agu 2026 pada 16.12
 -- Versi server: 10.4.32-MariaDB
 -- Versi PHP: 8.2.12
 
@@ -50,6 +50,7 @@ CREATE TABLE `job_files` (
   `id` int(11) NOT NULL,
   `job_id` varchar(50) DEFAULT NULL,
   `filename` varchar(255) DEFAULT NULL,
+  `path` varchar(500) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -118,6 +119,9 @@ INSERT INTO `pelanggan` (`id`, `nama`, `template`) VALUES
 ('14231', 'UNIVERSITAS ISLAM MADURA', 'idt'),
 ('14383', 'TELKOM POLDA JATIM', 'idt'),
 ('2099', 'PDAM PUSAT GRESIK', 'idt'),
+('2107', 'INSTITUSI AGAMA ISLAM NEGERI PAMEKASAN', 'icm'),
+('2126', 'DINAS KOMUNIKASI DAN INFORMASI BANGKALAN', 'icm'),
+('2132', 'DINAS KOMUNIKASI DAN INFORMATIKA KABUPATEN PEKALONGAN', 'icm'),
 ('2720', 'YUSEN LOGISTIC, PT', 'idt'),
 ('4463', 'DEWAN PERWAKILAN RAKYAT DAERAH SURABAYA', 'idt'),
 ('4719', 'BADAN KEPEGAWAIAN NEGARA II SIDOARJO KANREG', 'idt'),
@@ -135,6 +139,47 @@ INSERT INTO `pelanggan` (`id`, `nama`, `template`) VALUES
 ('9341', 'TRIPILLAR JUANDA', 'idt'),
 ('9670', 'PENGADILAN AGAMA BANGIL', 'idt'),
 ('9789', 'BALAI PENDIDIKAN DAN PELATIHAN TRANSPORTASI LAUT JAKARTA SELATAN', 'idt');
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `sla_bulanan`
+--
+
+CREATE TABLE `sla_bulanan` (
+  `id` int(11) NOT NULL,
+  `pelanggan_id` varchar(20) NOT NULL,
+  `nama_pelanggan` varchar(255) NOT NULL,
+  `template` varchar(50) NOT NULL,
+  `periode` char(7) NOT NULL,
+  `detik_periode` int(11) NOT NULL,
+  `detik_downtime` int(11) NOT NULL DEFAULT 0,
+  `uptime_persen` decimal(7,4) NOT NULL,
+  `jumlah_insiden` int(11) NOT NULL DEFAULT 0,
+  `trafik_min_mbps` decimal(12,4) DEFAULT NULL,
+  `trafik_avg_mbps` decimal(12,4) DEFAULT NULL,
+  `trafik_max_mbps` decimal(12,4) DEFAULT NULL,
+  `kanal_trafik` varchar(120) DEFAULT NULL,
+  `catatan` varchar(255) DEFAULT NULL,
+  `file_docx` varchar(500) DEFAULT NULL,
+  `job_id` varchar(50) DEFAULT NULL,
+  `dibuat_pada` timestamp NOT NULL DEFAULT current_timestamp(),
+  `diperbarui_pada` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `sla_downtime`
+--
+
+CREATE TABLE `sla_downtime` (
+  `id` int(11) NOT NULL,
+  `sla_id` int(11) NOT NULL,
+  `mulai` datetime NOT NULL,
+  `selesai` datetime NOT NULL,
+  `detik` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Indexes for dumped tables
@@ -160,6 +205,22 @@ ALTER TABLE `pelanggan`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Indeks untuk tabel `sla_bulanan`
+--
+ALTER TABLE `sla_bulanan`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_sla` (`pelanggan_id`,`periode`,`template`),
+  ADD KEY `idx_periode` (`periode`),
+  ADD KEY `idx_pelanggan` (`pelanggan_id`);
+
+--
+-- Indeks untuk tabel `sla_downtime`
+--
+ALTER TABLE `sla_downtime`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_sla` (`sla_id`);
+
+--
 -- AUTO_INCREMENT untuk tabel yang dibuang
 --
 
@@ -167,7 +228,29 @@ ALTER TABLE `pelanggan`
 -- AUTO_INCREMENT untuk tabel `job_files`
 --
 ALTER TABLE `job_files`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+
+--
+-- AUTO_INCREMENT untuk tabel `sla_bulanan`
+--
+ALTER TABLE `sla_bulanan`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT untuk tabel `sla_downtime`
+--
+ALTER TABLE `sla_downtime`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Ketidakleluasaan untuk tabel pelimpahan (Dumped Tables)
+--
+
+--
+-- Ketidakleluasaan untuk tabel `sla_downtime`
+--
+ALTER TABLE `sla_downtime`
+  ADD CONSTRAINT `fk_sla_downtime` FOREIGN KEY (`sla_id`) REFERENCES `sla_bulanan` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
