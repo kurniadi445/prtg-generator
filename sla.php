@@ -44,117 +44,16 @@ function tabelSlaAda(): bool
 
 $siap = tabelSlaAda();
 
-// Jumlah baris tanpa penyaring apa pun — dipakai untuk membedakan
-// "tabel memang kosong" dari "penyaringnya yang terlalu sempit".
-$totalSeluruhnya = 0;
+// Seluruh pengambilan data ada di slaAmbilData() (sla-store.php), dipakai
+// bersama dengan sla-export.php supaya angka di layar dan di berkas Excel
+// tidak mungkin berbeda.
+$data = $siap
+    ? slaAmbilData(isset($labelTemplate[$templateF]) ? $templateF : '', $cariNama)
+    : ['tahunan' => [], 'tampil' => 0, 'seluruhnya' => 0];
 
-if ($siap) {
-    $totalSeluruhnya = (int) db()->query('SELECT COUNT(*) FROM sla_bulanan')->fetchColumn();
-}
-
-// ---------------------------------------------------------------------
-// Ambil data
-// ---------------------------------------------------------------------
-$tahunan = [];   // ['2026' => ['baris' => [...], 'perBulan' => [...]], ...]
-$totalTampil = 0;
-
-if ($siap && $totalSeluruhnya > 0) {
-    $sql   = 'SELECT * FROM sla_bulanan WHERE 1';
-    $param = [];
-
-    if ($templateF !== '' && isset($labelTemplate[$templateF])) {
-        $sql    .= ' AND template = ?';
-        $param[] = $templateF;
-    }
-
-    if ($cariNama !== '') {
-        $sql    .= ' AND nama_pelanggan LIKE ?';
-        $param[] = '%' . $cariNama . '%';
-    }
-
-    $sql .= ' ORDER BY periode DESC, nama_pelanggan, template';
-
-    $q = db()->prepare($sql);
-    $q->execute($param);
-
-    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $tahun = substr($r['periode'], 0, 4);
-        $bulan = (int) substr($r['periode'], 5, 2);
-        $kunci = $r['pelanggan_id'] . '|' . $r['template'];
-
-        if (!isset($tahunan[$tahun]['baris'][$kunci])) {
-            $tahunan[$tahun]['baris'][$kunci] = [
-                'nama'     => $r['nama_pelanggan'],
-                'template' => $r['template'],
-                'sel'      => [],
-            ];
-        }
-
-        $tahunan[$tahun]['baris'][$kunci]['sel'][$bulan] = $r;
-        $tahunan[$tahun]['perBulan'][$bulan][] = (float) $r['uptime_persen'];
-
-        $totalTampil++;
-    }
-
-    // Tahun terbaru di atas, pelanggan urut abjad di dalam tiap tahun.
-    krsort($tahunan);
-
-    foreach ($tahunan as &$th) {
-        uasort($th['baris'], fn($a, $b) => strcmp($a['nama'], $b['nama']));
-    }
-
-    unset($th);
-}
-
-// ---------------------------------------------------------------------
-// Ekspor CSV (Comma-Separated Values) — mengikuti penyaring yang sedang aktif
-// ---------------------------------------------------------------------
-if (($_GET['format'] ?? '') === 'csv' && $tahunan) {
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="rekap-sla-' . date('Y-m-d') . '.csv"');
-
-    $keluar = fopen('php://output', 'w');
-
-    // BOM (Byte Order Mark) supaya Excel membaca UTF-8 dengan benar.
-    fwrite($keluar, "\xEF\xBB\xBF");
-
-    fputcsv($keluar, [
-        'Pelanggan', 'Template', 'Periode', 'Uptime (%)',
-        'Downtime (jam:menit:detik)', 'Jumlah Insiden',
-        'Trafik Min (Mbps)', 'Trafik Rata-rata (Mbps)', 'Trafik Maks (Mbps)',
-    ]);
-
-    foreach ($tahunan as $th) {
-        foreach ($th['baris'] as $b) {
-            for ($m = 1; $m <= 12; $m++) {
-                if (!isset($b['sel'][$m])) {
-                    continue;
-                }
-
-                $r = $b['sel'][$m];
-
-                fputcsv($keluar, [
-                    $r['nama_pelanggan'],
-                    $r['template'],
-                    $r['periode'],
-                    number_format((float) $r['uptime_persen'], 4, ',', ''),
-                    slaJamMenitDetik((int) $r['detik_downtime']),
-                    $r['jumlah_insiden'],
-                    $r['trafik_min_mbps'] !== null ? number_format((float) $r['trafik_min_mbps'], 3, ',', '') : '',
-                    $r['trafik_avg_mbps'] !== null ? number_format((float) $r['trafik_avg_mbps'], 3, ',', '') : '',
-                    $r['trafik_max_mbps'] !== null ? number_format((float) $r['trafik_max_mbps'], 3, ',', '') : '',
-                ]);
-            }
-        }
-    }
-
-    fclose($keluar);
-    exit;
-}
+$tahunan         = $data['tahunan'];
+$totalTampil     = $data['tampil'];
+$totalSeluruhnya = $data['seluruhnya'];
 
 // ---------------------------------------------------------------------
 // Rincian satu periode
@@ -223,6 +122,8 @@ function urlSla(array $ganti = []): string
         .saring select, .saring input[type=text] { border: 1px solid var(--garis); border-radius: 6px; font-size: 14px; padding: 8px 10px; }
         .tombol { background: #eef1f5; border: 1px solid var(--garis); border-radius: 6px; color: var(--teks); cursor: pointer; font-size: 14px; padding: 8px 16px; text-decoration: none; }
         .tombol:hover { background: #e2e6ec; }
+        .tombol.utama { background: var(--biru); border-color: var(--biru); color: #fff; font-weight: bold; }
+        .tombol.utama:hover { background: var(--biru-tua); }
 
         table { border-collapse: collapse; font-size: 13px; width: 100%; }
         th, td { border-bottom: 1px solid #eef0f3; padding: 7px 8px; text-align: center; white-space: nowrap; }
@@ -328,7 +229,10 @@ function urlSla(array $ganti = []): string
             <?php endif; ?>
 
             <?php if ($tahunan): ?>
-                <a class="tombol" href="<?= htmlspecialchars(urlSla(['format' => 'csv'])) ?>">Ekspor CSV</a>
+                <a class="tombol utama" href="sla-export.php?<?= htmlspecialchars(http_build_query(array_filter([
+                    'template' => $templateF,
+                    'q'        => $cariNama,
+                ]))) ?>">⬇ Ekspor Excel</a>
             <?php endif; ?>
         </div>
 

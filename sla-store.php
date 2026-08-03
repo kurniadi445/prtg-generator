@@ -140,6 +140,87 @@ function slaSimpan(array $data): ?int
 }
 
 /**
+ * Ambil seluruh rekap SLA, sudah disusun sebagai matriks per tahun.
+ *
+ * Dipakai bersama oleh sla.php (tampilan layar) dan sla-export.php (berkas
+ * Excel). Sengaja satu fungsi, supaya angka di layar dan di berkas ekspor
+ * tidak mungkin berbeda gara-gara kueri yang berjalan sendiri-sendiri.
+ *
+ * Bentuk kembalian:
+ *   [
+ *     'tahunan' => [
+ *        '2026' => [
+ *           'baris'   => [ '<pelanggan_id>|<template>' => [
+ *                             'nama' => ..., 'template' => ...,
+ *                             'sel'  => [ <1..12> => <baris sla_bulanan> ],
+ *                          ] ],
+ *           'perBulan' => [ <1..12> => [ <uptime persen>, ... ] ],
+ *        ],
+ *     ],
+ *     'tampil'      => int,   // jumlah baris yang lolos penyaring
+ *     'seluruhnya'  => int,   // jumlah baris tanpa penyaring apa pun
+ *   ]
+ */
+function slaAmbilData(string $templateF = '', string $cariNama = ''): array
+{
+    $hasil = ['tahunan' => [], 'tampil' => 0, 'seluruhnya' => 0];
+
+    $hasil['seluruhnya'] = (int) db()->query('SELECT COUNT(*) FROM sla_bulanan')->fetchColumn();
+
+    if ($hasil['seluruhnya'] === 0) {
+        return $hasil;
+    }
+
+    $sql   = 'SELECT * FROM sla_bulanan WHERE 1';
+    $param = [];
+
+    if ($templateF !== '') {
+        $sql    .= ' AND template = ?';
+        $param[] = $templateF;
+    }
+
+    if ($cariNama !== '') {
+        $sql    .= ' AND nama_pelanggan LIKE ?';
+        $param[] = '%' . $cariNama . '%';
+    }
+
+    $sql .= ' ORDER BY periode DESC, nama_pelanggan, template';
+
+    $q = db()->prepare($sql);
+    $q->execute($param);
+
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $tahun = substr($r['periode'], 0, 4);
+        $bulan = (int) substr($r['periode'], 5, 2);
+        $kunci = $r['pelanggan_id'] . '|' . $r['template'];
+
+        if (!isset($hasil['tahunan'][$tahun]['baris'][$kunci])) {
+            $hasil['tahunan'][$tahun]['baris'][$kunci] = [
+                'nama'     => $r['nama_pelanggan'],
+                'template' => $r['template'],
+                'sel'      => [],
+            ];
+        }
+
+        $hasil['tahunan'][$tahun]['baris'][$kunci]['sel'][$bulan] = $r;
+        $hasil['tahunan'][$tahun]['perBulan'][$bulan][] = (float) $r['uptime_persen'];
+
+        $hasil['tampil']++;
+    }
+
+    // Tahun terbaru di atas, pelanggan urut abjad di dalam tiap tahun.
+    krsort($hasil['tahunan']);
+
+    foreach ($hasil['tahunan'] as &$th) {
+        uasort($th['baris'], fn($a, $b) => strcmp($a['nama'], $b['nama']));
+    }
+
+    unset($th);
+
+    return $hasil;
+}
+
+/**
  * Ambang SLA dari config, dengan nilai bawaan 99.5 persen.
  */
 function slaTarget(): float
