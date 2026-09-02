@@ -17,14 +17,11 @@
  * berguna adalah memasang autentikasi di depan seluruh aplikasi.
  */
 
-require_once 'database.php';
+require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/worker-heartbeat.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
-
-const DETAK_BERKAS      = 'tmp/worker.json';
-const HENTI_BERKAS      = 'tmp/worker.stop';
-const DETAK_KEDALUWARSA = 15;
 
 /**
  * Alamat pemanggil, dinormalkan. PHP melaporkan klien IPv4 di soket IPv6
@@ -68,13 +65,8 @@ $jawab = function (array $data, int $kode = 200): void {
  * Status worker berdasarkan heartbeat + isi antrean.
  */
 $statusWorker = function () use ($asal): array {
-    $detak = is_file(DETAK_BERKAS)
-        ? json_decode((string) file_get_contents(DETAK_BERKAS), true)
-        : null;
-
-    $hidup = is_array($detak)
-        && !empty($detak['last_seen'])
-        && (time() - (int) $detak['last_seen']) <= DETAK_KEDALUWARSA;
+    $detak = detakBaca();
+    $hidup = detakHidup($detak);
 
     $antre = 0;
     $proses = 0;
@@ -135,8 +127,10 @@ if ($aksi === 'stop') {
         $jawab(['ok' => false, 'pesan' => 'Worker memang sedang tidak berjalan.'] + $status);
     }
 
-    if (!is_dir('tmp')) {
-        mkdir('tmp', 0777, true);
+    $folder = dirname(HENTI_BERKAS);
+
+    if (!is_dir($folder)) {
+        mkdir($folder, 0777, true);
     }
 
     file_put_contents(HENTI_BERKAS, (string) time(), LOCK_EX);

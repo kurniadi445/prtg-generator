@@ -2,26 +2,22 @@
 
 require_once 'database.php';
 require_once 'helpers.php';
+require_once __DIR__ . '/worker-heartbeat.php';
 
 $bd = db();
 
 /**
  * Apakah worker sedang hidup? Dipakai untuk melindungi job yang sedang
  * diproses agar tidak dihapus di tengah jalan.
+ *
+ * Aturannya sengaja tidak ditulis ulang di sini: worker yang sedang memproses
+ * job meminta masa berlaku heartbeat yang jauh lebih panjang, dan salinan
+ * aturan yang tertinggal akan mengira worker sibuk itu sudah mati — lalu
+ * mengizinkan job yang sedang dikerjakan ikut terhapus.
  */
 function workerSedangHidup(): bool
 {
-    $berkas = 'tmp/worker.json';
-
-    if (!is_file($berkas)) {
-        return false;
-    }
-
-    $detak = json_decode((string) file_get_contents($berkas), true);
-
-    return is_array($detak)
-        && !empty($detak['last_seen'])
-        && (time() - (int) $detak['last_seen']) <= 15;
+    return detakHidup(detakBaca());
 }
 
 /**

@@ -16,6 +16,15 @@
 
 require_once __DIR__ . '/database.php';
 
+// Batas waktu permintaan ke PRTG.
+//
+// Bawaan cURL adalah TANPA batas. Bila PRTG menggantung — bukan menolak —
+// worker ikut menggantung selamanya di satu job: heartbeat berhenti, job tetap
+// 'processing', dan dari luar tidak terbedakan dari worker yang mati.
+// Lebih baik job itu gagal dengan pesan jelas daripada antrean berhenti total.
+const PRTG_TIMEOUT_SAMBUNG = 15;    // detik untuk membangun koneksi
+const PRTG_TIMEOUT_TOTAL   = 180;   // detik untuk seluruh permintaan
+
 /**
  * Login ke PRTG. Cookie sesi disimpan di $cookie dan dipakai ulang oleh
  * prtgAmbil() untuk permintaan berikutnya.
@@ -33,12 +42,15 @@ function prtgLogin(array $prtg, string $cookie): void
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_COOKIEJAR      => $cookie,
         CURLOPT_COOKIEFILE     => $cookie,
+        CURLOPT_CONNECTTIMEOUT => PRTG_TIMEOUT_SAMBUNG,
+        CURLOPT_TIMEOUT        => PRTG_TIMEOUT_TOTAL,
     ]);
 
     curl_exec($ch);
 
-    $galat = curl_error($ch);
-    $kode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $galat    = curl_error($ch);
+    $kode     = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $tujuan   = (string) curl_getinfo($ch, CURLINFO_REDIRECT_URL);
 
     curl_close($ch);
 
@@ -48,6 +60,21 @@ function prtgLogin(array $prtg, string $cookie): void
 
     if ($kode >= 400) {
         throw new RuntimeException('Login PRTG ditolak server (HTTP ' . $kode . ')');
+    }
+
+    // PRTG membalas kredensial yang salah dengan 302 ke index.htm?errormsg=...,
+    // bukan dengan kode error. Tanpa pemeriksaan ini laporan tetap dibuat —
+    // dari halaman login, bukan dari data sensor — dan job dinyatakan berhasil
+    // padahal isinya kosong.
+    //
+    // Hanya bukti positif kegagalan yang dijadikan alasan melempar, supaya
+    // login yang sebenarnya berhasil tidak ikut ditolak.
+    if (stripos($tujuan, 'errormsg=') !== false) {
+        parse_str((string) parse_url($tujuan, PHP_URL_QUERY), $kueri);
+
+        throw new RuntimeException(
+            'Login PRTG ditolak: ' . trim(strip_tags((string) ($kueri['errormsg'] ?? 'kredensial salah')))
+        );
     }
 }
 
@@ -63,6 +90,8 @@ function prtgAmbil(string $url, string $cookie, bool $ikutiRedirect = false): st
         CURLOPT_COOKIEFILE     => $cookie,
         CURLOPT_FOLLOWLOCATION => $ikutiRedirect,
         CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+        CURLOPT_CONNECTTIMEOUT => PRTG_TIMEOUT_SAMBUNG,
+        CURLOPT_TIMEOUT        => PRTG_TIMEOUT_TOTAL,
     ]);
 
     $isi   = curl_exec($ch);

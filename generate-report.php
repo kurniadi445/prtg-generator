@@ -25,13 +25,16 @@
  *      worker.php dan status.php ikut disesuaikan.
  */
 
-require 'vendor/autoload.php';
+// Path dipatok ke __DIR__, bukan direktori kerja: worker yang dinyalakan dari
+// browser mewarisi direktori kerja Apache, dan 'vendor/autoload.php' relatif
+// akan gagal dimuat di sana.
+require __DIR__ . '/vendor/autoload.php';
 
-require_once 'database.php';
-require_once 'helpers.php';
-require_once 'prtg.php';
-require_once 'report-blocks.php';
-require_once 'sla-store.php';
+require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/prtg.php';
+require_once __DIR__ . '/report-blocks.php';
+require_once __DIR__ . '/sla-store.php';
 
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
@@ -158,9 +161,15 @@ function pathDokumen(string $template, string $namaAman, string $kodeBulan, stri
  *
  * $sementara diisi dengan daftar berkas sementara yang dibuat, agar
  * pemanggil bisa membersihkannya walau terjadi error.
+ *
+ * $detak dipanggil di sela langkah-langkah berat. Worker memakainya untuk
+ * menyegarkan heartbeat: seluruh fungsi ini bisa berjalan beberapa menit, dan
+ * tanpa tanda hidup di tengahnya worker yang sibuk dikira mati.
  */
-function ambilDataPrtg(array $prtg, array $laporan, string $idSensor, string $bulan, string $token, bool $includeDowntime, array &$sementara): array
+function ambilDataPrtg(array $prtg, array $laporan, string $idSensor, string $bulan, string $token, bool $includeDowntime, array &$sementara, ?callable $detak = null): array
 {
+    $detak ??= static function (): void {};
+
     if (!is_dir('tmp')) {
         mkdir('tmp', 0777, true);
     }
@@ -178,9 +187,11 @@ function ambilDataPrtg(array $prtg, array $laporan, string $idSensor, string $bu
     $akhir   = date('Y-m-t-23-59-00', strtotime($bulan));
 
     prtgLogin($prtg, $cookie);
+    $detak();
 
     $html = prtgAmbil(prtgUrlHistoris($prtg, $idSensor, $mulai, $akhir), $cookie);
     $html = str_replace('</head>', '<base href="' . $baseUrl . '"></head>', $html);
+    $detak();
 
     $dom = new DOMDocument();
     @$dom->loadHTML($html);
@@ -189,12 +200,17 @@ function ambilDataPrtg(array $prtg, array $laporan, string $idSensor, string $bu
 
     file_put_contents($svgFile, prtgAmbil(prtgUrlGrafik($prtg, $idSensor, $mulai, $akhir), $cookie, true));
     file_put_contents($htmlFile, prtgSusunHalaman($dom, $xpath, $baseUrl, $namaSvg));
+    $detak();
 
+    // Langkah paling lama di seluruh alur: Chromium dijalankan dan halaman
+    // dipotret. Tidak ada celah untuk menyegarkan heartbeat di dalamnya, jadi
+    // masa berlaku yang diminta worker harus lebih panjang dari ini.
     Browsershot::url($laporan['app_base_url'] . '/' . $htmlFile)
         ->windowSize(1920, 1080)
         ->save($pngFile);
 
     $sementara[] = $pngFile;
+    $detak();
 
     // Daftar downtime SELALU diambil, walau tabelnya tidak dicetak di Word.
     // Opsi 'rekap_downtime' pada job hanya mengatur isi dokumen, bukan
@@ -211,8 +227,16 @@ function ambilDataPrtg(array $prtg, array $laporan, string $idSensor, string $bu
 
 /**
  * Buat laporan untuk rentang bulan (inklusif) lalu kembalikan daftar path relatif.
+ *
+ * @param callable|null $detak     dipanggil di sela langkah berat; worker memakainya
+ *                                 untuk menyegarkan heartbeat
+ * @param callable|null $perBerkas dipanggil dengan path tiap dokumen segera setelah
+ *                                 bulan itu selesai. Worker mencatatnya ke job_files
+ *                                 saat itu juga: kalau bulan berikutnya gagal,
+ *                                 dokumen yang sudah jadi tetap tercatat alih-alih
+ *                                 hilang bersama seluruh job.
  */
-function generateReportRange($dari, $sampai, $idPelanggan, $jobId, $includeDowntime)
+function generateReportRange($dari, $sampai, $idPelanggan, $jobId, $includeDowntime, ?callable $detak = null, ?callable $perBerkas = null)
 {
     $files = [];
 
@@ -222,7 +246,12 @@ function generateReportRange($dari, $sampai, $idPelanggan, $jobId, $includeDownt
     $periode = new DatePeriod($mulai, new DateInterval('P1M'), $akhir);
 
     foreach ($periode as $bulan) {
-        $files[] = generateReport($bulan->format('Y-m'), $idPelanggan, $jobId, $includeDowntime);
+        $path    = generateReport($bulan->format('Y-m'), $idPelanggan, $jobId, $includeDowntime, $detak);
+        $files[] = $path;
+
+        if ($perBerkas !== null) {
+            $perBerkas($path);
+        }
     }
 
     return $files;
@@ -233,7 +262,7 @@ function generateReportRange($dari, $sampai, $idPelanggan, $jobId, $includeDownt
  *
  * @return string path relatif dokumen, mis. 'jobs/idt/PT ABC/2026-07 - PT ABC.docx'
  */
-function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
+function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true, ?callable $detak = null)
 {
     if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $bulan)) {
         throw new RuntimeException('Bulan tidak valid');
@@ -250,7 +279,8 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
             $bulan,
             $jobId . '-' . $bulan,
             $includeDowntime,
-            $sementara
+            $sementara,
+            $detak
         );
 
         $waktu     = strtotime($bulan);
@@ -264,6 +294,10 @@ function generateReport($bulan, $idPelanggan, $jobId, $includeDowntime = true)
 
         $formatter->setPattern('yyyy-MM');
         $kodeBulan = $formatter->format($waktu);
+
+        if ($detak !== null) {
+            $detak();
+        }
 
         $dokumen = renderTemplate([
             'template'   => $pelanggan['template'],

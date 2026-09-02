@@ -30,11 +30,14 @@ function config(?string $bagian = null)
     return $config[$bagian] ?? null;
 }
 
-function db(): PDO
+function db(bool $sambungUlang = false): PDO
 {
     static $pdo = null;
 
-    if ($pdo instanceof PDO) {
+    // $sambungUlang dipakai worker: koneksi yang sudah diputus MySQL karena
+    // menganggur melewati wait_timeout tidak boleh dipakai ulang, dan proses
+    // yang hidup berhari-hari perlu bisa membuang koneksi mati itu.
+    if ($pdo instanceof PDO && !$sambungUlang) {
         return $pdo;
     }
 
